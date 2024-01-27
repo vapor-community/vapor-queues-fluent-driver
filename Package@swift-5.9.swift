@@ -1,10 +1,21 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.9
 import PackageDescription
+
+let swiftSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("ForwardTrailingClosures"),
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("ConciseMagicFile"),
+    .enableUpcomingFeature("DisableOutwardActorInference"),
+    .enableExperimentalFeature("StrictConcurrency=complete"),
+]
 
 let package = Package(
     name: "QueuesFluentDriver",
     platforms: [
-        .macOS(.v10_15)
+        .macOS(.v10_15),
+        .iOS(.v13),
+        .watchOS(.v6),
+        .tvOS(.v13),
     ],
     products: [
         .library(name: "QueuesFluentDriver", targets: ["QueuesFluentDriver"]),
@@ -26,13 +37,15 @@ let package = Package(
                 .product(name: "FluentSQL", package: "fluent-kit"),
                 .product(name: "SQLKit", package: "sql-kit"),
                 .product(name: "Queues", package: "queues")
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "QueuesFluentDriverTests",
             dependencies: [
                 .target(name: "QueuesFluentDriver"),
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
     ]
 )

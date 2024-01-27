@@ -2,52 +2,57 @@ import Fluent
 import SQLKit
 import Queues
 
-public enum QueuesFluentDbType: String {
-    case postgresql
-    case mysql
-    case sqlite
-}
-
-public struct FluentQueuesDriver {
+public struct FluentQueuesDriver: QueuesDriver {
     let databaseId: DatabaseID?
     let useSoftDeletes: Bool
-    let eventLoopGroup: EventLoopGroup
+    let eventLoopGroup: any EventLoopGroup
     
-    init(on databaseId: DatabaseID? = nil, useSoftDeletes: Bool, on eventLoopGroup: EventLoopGroup) {
+    init(on databaseId: DatabaseID? = nil, useSoftDeletes: Bool, on eventLoopGroup: any EventLoopGroup) {
         self.databaseId = databaseId
         self.useSoftDeletes = useSoftDeletes
         self.eventLoopGroup = eventLoopGroup
     }
-}
 
-extension FluentQueuesDriver: QueuesDriver {
-    public func makeQueue(with context: QueueContext) -> Queue {
-        let db = context
+    public func makeQueue(with context: QueueContext) -> any Queue {
+        let baseDb = context
             .application
             .databases
-            .database(databaseId, logger: context.logger, on: context.eventLoop)
+            .database(self.databaseId, logger: context.logger, on: context.eventLoop)
         
-        // How do we report that something goes wrong here? Since makeQueue cannot throw.
-        let dialect = (db as? SQLDatabase)?.dialect.name
-        if db == nil || dialect == nil {
-            context.logger.error(
-                "\(Self.self): Database misconfigured or unsupported."
-            )
+        // `QueuesDriver` methods cannot throw, so we report errors by returning a fake queue which
+        // always throws errors when used.
+        guard let baseDb else {
+            return FailingQueue(failure: QueuesFluentError.databaseNotFound, context: context)
         }
         
-        let dbType = QueuesFluentDbType(rawValue: dialect!)
-        if dbType == nil {
-            context.logger.error("\(Self.self): Unsupported Database type '\(dialect!)'")
+        guard let sqlDb = baseDb as? any SQLDatabase else {
+            return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
+        }
+        
+        switch sqlDb.dialect.name {
+        case "sqlite", "mysql", "postgresql": break
+        default: return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
         }
         
         return FluentQueue(
             context: context,
-            db: db!,
-            dbType: dbType!,
+            db: baseDb,
+            sqlDb: sqlDb,
             useSoftDeletes: self.useSoftDeletes
         )
     }
     
     public func shutdown() {
     }
+}
+
+struct FailingQueue: Queue {
+    let failure: any Error
+    let context: QueueContext
+
+    func get(_: JobIdentifier) -> EventLoopFuture<JobData> { self.eventLoop.future(error: self.failure) }
+    func set(_: JobIdentifier, to: JobData) -> EventLoopFuture<Void> { self.eventLoop.future(error: self.failure) }
+    func clear(_: JobIdentifier) -> EventLoopFuture<Void> { self.eventLoop.future(error: self.failure) }
+    func push(_: JobIdentifier) -> EventLoopFuture<Void> { self.eventLoop.future(error: self.failure) }
+    func pop() -> EventLoopFuture<JobIdentifier?> { self.eventLoop.future(error: self.failure) }
 }

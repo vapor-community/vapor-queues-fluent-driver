@@ -1,43 +1,34 @@
 import Foundation
-import Fluent
+import FluentKit
 import Queues
-
-extension FieldKey {
-    static var payload: Self { "payload" }
-    static var maxRetryCount: Self { "max_retries" }
-    static var attempts: Self { "attempt" }
-    static var delayUntil: Self { "delay_until" }
-    static var queuedAt: Self { "queued_at" }
-    static var jobName: Self { "job_name" }
-}
 
 /// Handles storage of a `JobData` into the database
 final class JobDataModel: Fields {
-    required init() {}
-    
     /// The job data to be encoded.
-    @Field(key: .payload)
+    @Field(key: "payload")
     var payload: [UInt8]
     
     /// The maxRetryCount for the `Job`.
-    @Field(key: .maxRetryCount)
+    @Field(key: "max_retries")
     var maxRetryCount: Int
     
     /// The number of attempts made to run the `Job`.
-    @Field(key: .attempts)
+    @Field(key: "attempt")
     var attempts: Int?
     
     /// A date to execute this job after
-    @OptionalField(key: .delayUntil)
+    @OptionalField(key: "delay_until")
     var delayUntil: Date?
     
     /// The date this job was queued
-    @Field(key: .queuedAt)
+    @Field(key: "queued_at")
     var queuedAt: Date
     
     /// The name of the `Job`
-    @Field(key: .jobName)
+    @Field(key: "job_name")
     var jobName: String
+    
+    init() {}
     
     init(jobData: JobData) {
         self.payload = jobData.payload

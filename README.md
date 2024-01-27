@@ -25,7 +25,7 @@ Add it to the `Package.swift` of your Vapor4 project:
 
 ```swift
 
-// swift-tools-version:5.4
+// swift-tools-version:5.7
 import PackageDescription
 
 let package = Package(
@@ -36,7 +36,7 @@ let package = Package(
     ...
     dependencies: [
         ...
-        .package(url: "https://github.com/m-barthelemy/vapor-queues-fluent-driver.git", from: "3.0.0-beta1"),
+        .package(url: "https://github.com/vapor-community/vapor-queues-fluent-driver.git", from: "3.0.0-beta.2"),
         ...
     ],
     targets: [

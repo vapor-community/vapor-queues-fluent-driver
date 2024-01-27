@@ -1,6 +1,6 @@
 import SQLKit
-import Fluent
+import FluentKit
 
 protocol PopQueryProtocol {
-    func pop(db: Database, select: SQLExpression) -> EventLoopFuture<String?>
+    static func pop(db: any Database, select: SQLSelectBuilder) async throws -> String?
 }
