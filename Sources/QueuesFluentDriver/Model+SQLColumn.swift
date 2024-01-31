@@ -4,13 +4,13 @@ import SQLKit
 
 extension FluentKit.Fields {
     static func key<P>(for keypath: KeyPath<Self, P>) -> FieldKey
-        where P: QueryAddressableProperty, P.Model == Self
+        where P: QueryAddressableProperty
     {
         Self.path(for: keypath.appending(path: \.queryableProperty))[0]
     }
 
     static func sqlColumnName<P>(_ keypath: KeyPath<Self, P>) -> SQLIdentifier
-        where P: QueryAddressableProperty, P.Model == Self
+        where P: QueryAddressableProperty
     {
         SQLIdentifier(Self.key(for: keypath).description)
     }
@@ -25,7 +25,7 @@ extension FluentKit.Schema {
     }
     
     static func sqlColumn<P>(_ keypath: KeyPath<Self, P>) -> SQLColumn
-        where P: QueryAddressableProperty, P.Model == Self
+        where P: QueryAddressableProperty
     {
         .init(
             Self.sqlColumnName(keypath),

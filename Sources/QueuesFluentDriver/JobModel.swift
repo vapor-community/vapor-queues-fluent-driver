@@ -1,4 +1,3 @@
-import Foundation
 import FluentKit
 import Queues
 
@@ -27,10 +26,6 @@ final class JobModel: Model {
     /// The current state of the Job
     @Enum(key: "state")
     var state: QueuesFluentJobState
-    
-    /// Earliest date the job can run
-    @OptionalField(key: "run_at")
-    var runAtOrAfter: Date?
     
     @Timestamp(key: "updated_at", on: .update)
     var updatedAt: Date?

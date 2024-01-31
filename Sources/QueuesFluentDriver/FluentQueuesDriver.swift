@@ -4,12 +4,10 @@ import Queues
 
 public struct FluentQueuesDriver: QueuesDriver {
     let databaseId: DatabaseID?
-    let useSoftDeletes: Bool
     let eventLoopGroup: any EventLoopGroup
     
-    init(on databaseId: DatabaseID? = nil, useSoftDeletes: Bool, on eventLoopGroup: any EventLoopGroup) {
+    init(on databaseId: DatabaseID? = nil, on eventLoopGroup: any EventLoopGroup) {
         self.databaseId = databaseId
-        self.useSoftDeletes = useSoftDeletes
         self.eventLoopGroup = eventLoopGroup
     }
 
@@ -28,22 +26,15 @@ public struct FluentQueuesDriver: QueuesDriver {
         guard let sqlDb = baseDb as? any SQLDatabase else {
             return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
         }
-        
-        switch sqlDb.dialect.name {
-        case "sqlite", "mysql", "postgresql": break
-        default: return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
-        }
-        
+
         return FluentQueue(
             context: context,
             db: baseDb,
-            sqlDb: sqlDb,
-            useSoftDeletes: self.useSoftDeletes
+            sqlDb: sqlDb
         )
     }
     
-    public func shutdown() {
-    }
+    public func shutdown() {}
 }
 
 struct FailingQueue: Queue {

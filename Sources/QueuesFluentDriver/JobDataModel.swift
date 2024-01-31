@@ -1,4 +1,3 @@
-import Foundation
 import FluentKit
 import Queues
 
@@ -9,11 +8,11 @@ final class JobDataModel: Fields {
     var payload: [UInt8]
     
     /// The maxRetryCount for the `Job`.
-    @Field(key: "max_retries")
+    @Field(key: "max_retry_count")
     var maxRetryCount: Int
     
     /// The number of attempts made to run the `Job`.
-    @Field(key: "attempt")
+    @Field(key: "attempts")
     var attempts: Int?
     
     /// A date to execute this job after
