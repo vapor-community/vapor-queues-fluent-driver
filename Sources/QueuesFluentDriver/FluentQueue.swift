@@ -8,7 +8,7 @@
 ///
 /// [SE-0418]: https://github.com/apple/swift-evolution/blob/main/proposals/0418-inferring-sendable-for-methods.md
 /// [SE-0364]: https://github.com/apple/swift-evolution/blob/main/proposals/0364-retroactive-conformance-warning.md
-#if compiler(>=5.10) && !$InferSendableFromCaptures
+#if compiler(<5.10) || !$InferSendableFromCaptures
 #if compiler(>=5.10) && $RetroactiveAttribute
 extension KeyPath: @retroactive @unchecked Sendable where Root == JobDataModel {}
 #else
