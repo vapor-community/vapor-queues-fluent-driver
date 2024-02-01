@@ -1,20 +1,26 @@
 import SQLKit
 
-enum SQLSkipLocked: SQLExpression {
-    case forUpdateSkipLocked
-    case forShareSkipLocked
+enum SQLLockingClauseWithSkipLocked: SQLExpression {
+    /// Request an exclusive "writer" lock, skipping rows that are already locked.
+    case updateSkippingLocked
+
+    /// Request a shared "reader" lock, skipping rows that are already locked.
+    ///
+    /// > Note: This is the "lightest" locking that is supported by both Postgres and MySQL.
+    case shareSkippingLocked
     
+    // See `SQLExpression.serialize(to:)`.
     func serialize(to serializer: inout SQLSerializer) {
-        guard serializer.dialect.name != "sqlite" else {
-            return
-        }
-        
-        switch self {
-        case .forUpdateSkipLocked:
-            serializer.write("FOR UPDATE SKIP LOCKED")
-        case .forShareSkipLocked:
-            // This is the "lightest" locking that is supported by both Postgres and Mysql
-            serializer.write("FOR SHARE SKIP LOCKED")
+        serializer.statement {
+            switch self {
+            case .updateSkippingLocked:
+                guard $0.dialect.exclusiveSelectLockExpression != nil else { return }
+                $0.append(SQLLockingClause.update)
+            case .shareSkippingLocked:
+                guard $0.dialect.sharedSelectLockExpression != nil else { return }
+                $0.append(SQLLockingClause.share)
+            }
+            $0.append("SKIP LOCKED")
         }
     }
 }

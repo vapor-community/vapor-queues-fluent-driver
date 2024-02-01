@@ -79,7 +79,7 @@ public struct FluentQueue: Queue, Sendable {
                 .where(SQLFunction("coalesce", args: JobModel.sqlColumn(\.$data.$delayUntil), SQLFunction("now")), .lessThanOrEqual, SQLFunction("now"))
                 .orderBy(JobModel.sqlColumn(\.$data.$delayUntil))
                 .limit(1)
-                .lockingClause(SQLSkipLocked.forUpdateSkipLocked)
+                .lockingClause(SQLLockingClauseWithSkipLocked.updateSkippingLocked)
             
             if self.sqlDb.dialect.supportsReturning {
                 return try await self.sqlDb.update(JobModel.sqlTable)
