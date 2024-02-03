@@ -1,7 +1,9 @@
-import FluentKit
-import Queues
+import struct Foundation.Date
+import protocol FluentKit.Model
+import struct Queues.JobIdentifier
 
-public enum QueuesFluentJobState: String, Codable, CaseIterable {
+/// The possible states of a job as stored in the database.
+enum QueuesFluentJobState: String, Codable, CaseIterable {
     /// Ready to be picked up for execution
     case pending
     
@@ -12,6 +14,7 @@ public enum QueuesFluentJobState: String, Codable, CaseIterable {
     case completed
 }
 
+/// Encapsulates a job's metadata and the ``JobDataModel`` representing the `JobData`.
 final class JobModel: Model {
     static let schema = "_jobs_meta"
     

@@ -16,12 +16,15 @@ extension KeyPath: @unchecked Sendable where Root == JobDataModel {}
 #endif
 #endif
 
+/// An implementation of `Queue` which stores job data and metadata in a Fluent database.
 public struct FluentQueue: Queue, Sendable {
+    // See `Queue.context`.
     public let context: QueueContext
 
     let db: any Database
     let sqlDb: any SQLDatabase
 
+    // See `Queue.get(_:)`.
     public func get(_ id: JobIdentifier) -> EventLoopFuture<JobData> {
         self.sqlDb.select()
             .column(JobModel.sqlColumn(\.$data.$payload))
@@ -43,12 +46,14 @@ public struct FluentQueue: Queue, Sendable {
             }
     }
     
+    // See `Queue.get(_:to:)`.
     public func set(_ id: JobIdentifier, to jobStorage: JobData) -> EventLoopFuture<Void> {
         let jobModel = JobModel(id: id, queue: queueName.string, jobData: JobDataModel(jobData: jobStorage))
         
         return jobModel.save(on: self.db)
     }
     
+    // See `Queue.clear(_:)`.
     public func clear(_ id: JobIdentifier) -> EventLoopFuture<Void> {
         self.db.query(JobModel.self)
             .filter(\.$id == id.string)
@@ -58,6 +63,7 @@ public struct FluentQueue: Queue, Sendable {
             .flatMap { $0.delete(force: true, on: self.db) }
     }
     
+    // See `Queue.push(_:)`.
     public func push(_ id: JobIdentifier) -> EventLoopFuture<Void> {
         self.sqlDb
             .update(JobModel.sqlTable)
@@ -66,7 +72,7 @@ public struct FluentQueue: Queue, Sendable {
             .run()
     }
     
-    /// Currently selects the oldest job pending execution
+    // See `Queue.pop()`.
     public func pop() -> EventLoopFuture<JobIdentifier?> {
         self.db.eventLoop.makeFutureWithTask {
             // TODO: Use `SQLSubquery` when it becomes available in upstream SQLKit.

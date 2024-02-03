@@ -1,5 +1,5 @@
-import Vapor
-import FluentKit
+import class Vapor.Application
+import struct FluentKit.DatabaseID
 import Queues
 
 extension Application.Queues.Provider {

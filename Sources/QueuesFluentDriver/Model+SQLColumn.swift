@@ -1,6 +1,10 @@
-import FluentKit
-import FluentSQL
-import SQLKit
+import protocol FluentKit.Fields
+import protocol FluentKit.Schema
+import enum FluentKit.FieldKey
+import protocol FluentKit.QueryAddressableProperty
+import struct FluentSQL.SQLQualifiedTable
+import struct SQLKit.SQLIdentifier
+import struct SQLKit.SQLColumn
 
 extension FluentKit.Fields {
     static func key<P>(for keypath: KeyPath<Self, P>) -> FieldKey

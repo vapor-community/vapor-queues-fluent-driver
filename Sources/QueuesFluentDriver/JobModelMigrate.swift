@@ -1,5 +1,6 @@
-import FluentKit
-import SQLKit
+import protocol FluentKit.AsyncMigration
+import protocol FluentKit.Database
+import protocol SQLKit.SQLDatabase
 
 public struct JobMetadataMigrate: AsyncMigration {
     public func prepare(on database: any Database) async throws {

@@ -1,4 +1,4 @@
-@preconcurrency import Queues
+@preconcurrency import struct Queues.JobIdentifier
 
 enum QueuesFluentError: Error {
     /// Couldn't find a job with this Id

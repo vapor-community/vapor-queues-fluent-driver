@@ -1,29 +1,30 @@
-import FluentKit
-import Queues
+import struct Foundation.Date
+import protocol FluentKit.Fields
+import struct Queues.JobData
 
-/// Handles storage of a `JobData` into the database
+/// Encapsulates a `JobData` struct as a set of Fluent fields; see also ``JobModel``.
 final class JobDataModel: Fields {
     /// The job data to be encoded.
     @Field(key: "payload")
     var payload: [UInt8]
     
-    /// The maxRetryCount for the `Job`.
+    /// The maxRetryCount for the job.
     @Field(key: "max_retry_count")
     var maxRetryCount: Int
     
-    /// The number of attempts made to run the `Job`.
+    /// The number of attempts made to run the job.
     @Field(key: "attempts")
     var attempts: Int?
     
-    /// A date to execute this job after
+    /// A date to execute this job after.
     @OptionalField(key: "delay_until")
     var delayUntil: Date?
     
-    /// The date this job was queued
+    /// The date this job was queued.
     @Field(key: "queued_at")
     var queuedAt: Date
     
-    /// The name of the `Job`
+    /// The name of the job.
     @Field(key: "job_name")
     var jobName: String
     

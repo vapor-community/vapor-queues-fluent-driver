@@ -1,4 +1,5 @@
-import SQLKit
+import class NIOCore.EventLoopFuture
+import protocol SQLKit.SQLQueryFetcher
 
 // TODO: This can be removed when these APIs land in SQLKit.
 extension SQLQueryFetcher {

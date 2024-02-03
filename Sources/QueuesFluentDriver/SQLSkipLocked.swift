@@ -1,4 +1,6 @@
-import SQLKit
+import protocol SQLKit.SQLExpression
+import struct SQLKit.SQLSerializer
+import enum SQLKit.SQLLockingClause
 
 enum SQLLockingClauseWithSkipLocked: SQLExpression {
     /// Request an exclusive "writer" lock, skipping rows that are already locked.
