@@ -10,7 +10,7 @@ extension FluentKit.Fields {
     static func key<P>(for keypath: KeyPath<Self, P>) -> FieldKey
         where P: QueryAddressableProperty
     {
-        Self.path(for: keypath.appending(path: \.queryableProperty))[0]
+        Self.init()[keyPath: keypath].queryablePath[0]
     }
 
     static func sqlColumnName<P>(_ keypath: KeyPath<Self, P>) -> SQLIdentifier

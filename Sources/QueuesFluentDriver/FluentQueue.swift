@@ -67,7 +67,7 @@ public struct FluentQueue: Queue, Sendable {
     public func push(_ id: JobIdentifier) -> EventLoopFuture<Void> {
         self.sqlDb
             .update(JobModel.sqlTable)
-            .set(JobModel.sqlColumn(\.$state), to: SQLBind(QueuesFluentJobState.pending))
+            .set(JobModel.sqlColumnName(\.$state), to: SQLBind(QueuesFluentJobState.pending))
             .where(JobModel.sqlColumn(\.$id), .equal, SQLBind(id.string))
             .run()
     }
@@ -82,15 +82,15 @@ public struct FluentQueue: Queue, Sendable {
                 .from(JobModel.sqlTable)
                 .where(JobModel.sqlColumn(\.$state), .equal, SQLBind(QueuesFluentJobState.pending))
                 .where(JobModel.sqlColumn(\.$queue), .equal, SQLBind(self.queueName.string))
-                .where(SQLFunction("coalesce", args: JobModel.sqlColumn(\.$data.$delayUntil), SQLFunction("now")), .lessThanOrEqual, SQLFunction("now"))
+                .where(SQLFunction("coalesce", args: JobModel.sqlColumn(\.$data.$delayUntil), SQLFunction(self.sqlDb.dialect.name == "sqlite" ? "datetime" : "now")), .lessThanOrEqual, SQLFunction(self.sqlDb.dialect.name == "sqlite" ? "datetime" : "now"))
                 .orderBy(JobModel.sqlColumn(\.$data.$delayUntil))
                 .limit(1)
                 .lockingClause(SQLLockingClauseWithSkipLocked.updateSkippingLocked)
             
             if self.sqlDb.dialect.supportsReturning {
                 return try await self.sqlDb.update(JobModel.sqlTable)
-                    .set(JobModel.sqlColumn(\.$state), to: SQLBind(QueuesFluentJobState.processing))
-                    .set(JobModel.sqlColumn(\.$updatedAt), to: SQLFunction("now"))
+                    .set(JobModel.sqlColumnName(\.$state), to: SQLBind(QueuesFluentJobState.processing))
+                    .set(JobModel.sqlColumnName(\.$updatedAt), to: SQLFunction(self.sqlDb.dialect.name == "sqlite" ? "datetime" : "now"))
                     .where(JobModel.sqlColumn(\.$id), .equal, SQLGroupExpression(select.query))
                     .returning(JobModel.sqlColumn(\.$id))
                     .first(decodingColumn: "\(JobModel.key(for: \.$id))", as: String.self)
@@ -107,8 +107,8 @@ public struct FluentQueue: Queue, Sendable {
 
                     try await database
                         .update(JobModel.sqlTable)
-                        .set(JobModel.sqlColumn(\.$state), to: SQLBind(QueuesFluentJobState.processing))
-                        .set(JobModel.sqlColumn(\.$updatedAt), to: SQLFunction("now"))
+                        .set(JobModel.sqlColumnName(\.$state), to: SQLBind(QueuesFluentJobState.processing))
+                        .set(JobModel.sqlColumnName(\.$updatedAt), to: SQLFunction(self.sqlDb.dialect.name == "sqlite" ? "datetime" : "now"))
                         .where(JobModel.sqlColumn(\.$id), .equal, SQLBind(id))
                         .where(JobModel.sqlColumn(\.$state), .equal, SQLBind(QueuesFluentJobState.pending))
                         .run()

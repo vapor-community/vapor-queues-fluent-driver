@@ -22,9 +22,9 @@ public struct JobMetadataMigrate: AsyncMigration {
         try await (database as! any SQLDatabase)
             .create(index: "i_\(JobModel.schema)_\(JobModel.key(for: \.$state))_\(JobModel.key(for: \.$queue))")
             .on(JobModel.sqlTable)
-            .column(JobModel.sqlColumn(\.$state))
-            .column(JobModel.sqlColumn(\.$queue))
-            .column(JobModel.sqlColumn(\.$data.$delayUntil))
+            .column(JobModel.sqlColumnName(\.$state))
+            .column(JobModel.sqlColumnName(\.$queue))
+            .column(JobModel.sqlColumnName(\.$data.$delayUntil))
             .run()
     }
     
