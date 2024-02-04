@@ -1,5 +1,6 @@
 import struct Foundation.Date
-import protocol FluentKit.Model
+import FluentKit
+import struct Queues.JobData
 import struct Queues.JobIdentifier
 
 /// The possible states of a job as stored in the database.
@@ -14,7 +15,7 @@ enum QueuesFluentJobState: String, Codable, CaseIterable {
     case completed
 }
 
-/// Encapsulates a job's metadata and the ``JobDataModel`` representing the `JobData`.
+/// Encapsulates a job's metadata and `JobData`.
 final class JobModel: Model {
     static let schema = "_jobs_meta"
     
@@ -33,18 +34,41 @@ final class JobModel: Model {
     @Timestamp(key: "updated_at", on: .update)
     var updatedAt: Date?
     
-    @Timestamp(key: "deleted_at", on: .delete)
-    var deletedAt: Date?
+    /// The job data to be encoded.
+    @Field(key: "payload")
+    var payload: [UInt8]
     
-    @Group(key: "data")
-    var data: JobDataModel
+    /// The maxRetryCount for the job.
+    @Field(key: "max_retry_count")
+    var maxRetryCount: Int
+    
+    /// The number of attempts made to run the job.
+    @Field(key: "attempts")
+    var attempts: Int
+    
+    /// A date to execute this job after.
+    @OptionalField(key: "delay_until")
+    var delayUntil: Date?
+    
+    /// The date this job was queued.
+    @Field(key: "queued_at")
+    var queuedAt: Date
+    
+    /// The name of the job.
+    @Field(key: "job_name")
+    var jobName: String
     
     init() {}
     
-    init(id: JobIdentifier, queue: String, jobData: JobDataModel) {
+    init(id: JobIdentifier, queue: String, jobData: JobData) {
         self.id = id.string
         self.queue = queue
         self.state = .pending
-        self.data = jobData
+        self.payload = jobData.payload
+        self.maxRetryCount = jobData.maxRetryCount
+        self.attempts = jobData.attempts ?? 0
+        self.delayUntil = jobData.delayUntil
+        self.jobName = jobData.jobName
+        self.queuedAt = jobData.queuedAt
     }
 }
