@@ -12,7 +12,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         defer { app.shutdown() }
 
         app.databases.use(.sqlite(.memory), as: .sqlite)
-        app.migrations.add(JobMetadataMigrate())
+        app.migrations.add(JobModelMigration())
         
         let email = Email()
         app.queues.add(email)
@@ -42,7 +42,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         app.databases.use(.sqlite(.memory), as: .sqlite)
         app.queues.add(FailingJob())
         app.queues.use(.fluent())
-        app.migrations.add(JobMetadataMigrate())
+        app.migrations.add(JobModelMigration())
         try app.autoMigrate().wait()
 
         let jobId = JobIdentifier()
@@ -73,7 +73,7 @@ final class QueuesFluentDriverTests: XCTestCase {
 
         app.queues.use(.fluent())
 
-        app.migrations.add(JobMetadataMigrate())
+        app.migrations.add(JobModelMigration())
         try app.autoMigrate().wait()
 
         let jobId = JobIdentifier()

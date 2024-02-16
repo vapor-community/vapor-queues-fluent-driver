@@ -168,6 +168,22 @@ extension SQLSubqueryClauseBuilder {
     @discardableResult
     func from<M: Schema>(_: M.Type) -> Self { self.from(M.sqlTable) }
 }
+extension SQLInsertBuilder {
+    #if swift(>=5.9)
+    @discardableResult
+    func columns<each M: Schema, each V: QueryAddressableProperty>(_ kps: repeat KeyPath<each M, each V>) -> Self { repeat _ = self.column(each kps); return self }
+    #else
+    @discardableResult
+    func columns<M: Schema, N: Schema, O: Schema, P: Schema, Q: Schema, R: Schema>(
+        _ kp1: KeyPath<M, some QueryAddressableProperty>, _ kp2: KeyPath<N, some QueryAddressableProperty>, _ kp3: KeyPath<O, some QueryAddressableProperty>,
+        _ kp4: KeyPath<P, some QueryAddressableProperty>, _ kp5: KeyPath<Q, some QueryAddressableProperty>, _ kp6: KeyPath<R, some QueryAddressableProperty>
+    ) -> Self {
+        self.columns(M.sqlColumnName(kp1), N.sqlColumnName(kp2), O.sqlColumnName(kp3), P.sqlColumnName(kp4), Q.sqlColumnName(kp5), R.sqlColumnName(kp6))
+    }
+    #endif
+    @discardableResult
+    func column<M: Schema>(_ kp: KeyPath<M, some QueryAddressableProperty>) -> Self { self.insert.columns.append(M.sqlColumnName(kp)); return self }
+}
 extension SQLPredicateBuilder {
     @discardableResult
     func `where`(_ kp: KeyPath<some Schema, some QueryAddressableProperty>, _ op: SQLBinaryOperator, _ rhs: some Encodable) -> Self { self.where(kp, op, .bind(rhs)) }
@@ -183,4 +199,59 @@ extension SQLColumnUpdateBuilder {
     func set(_ kp: KeyPath<some Schema, some QueryAddressableProperty>, to bind: some Encodable) -> Self { self.set(kp, to: SQLBind(bind)) }
     @discardableResult
     func set<M: Schema>(_ kp: KeyPath<M, some QueryAddressableProperty>, to expr: some SQLExpression) -> Self { self.set(M.sqlColumnName(kp), to: expr) }
+}
+extension SQLConflictUpdateBuilder {
+    @discardableResult
+    func set<M: Schema>(excludedValueOf kp: KeyPath<M, some QueryAddressableProperty>) -> Self { self.set(excludedValueOf: M.sqlColumnName(kp)) }
+}
+extension SQLDatabase {
+    func insert<M: Schema>(into: M.Type) -> SQLInsertBuilder { .init(.init(table: M.sqlTable), on: self) }
+    func delete<M: Schema>(from: M.Type) -> SQLDeleteBuilder { .init(.init(table: M.sqlTable), on: self) }
+}
+
+/// The following extension allows using `Database's` `transaction(_:)` wrapper with an `SQLDatabase`.
+extension SQLDatabase {
+    func transaction<T>(_ closure: @escaping (any SQLDatabase) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
+        guard let fluentSelf = self as? any Database else { fatalError("Cannot use `SQLDatabase.transaction(_:)` on a non-Fluent database.") }
+        
+        return fluentSelf.transaction { fluentTransaction in closure(fluentTransaction as! any SQLDatabase) }
+    }
+
+    func transaction<T>(_ closure: @Sendable @escaping (any SQLDatabase) async throws -> T) async throws -> T {
+        guard let fluentSelf = self as? any Database else { fatalError("Cannot use `SQLDatabase.transaction(_:)` on a non-Fluent database.") }
+        
+        return try await fluentSelf.transaction { fluentTransaction in try await closure(fluentTransaction as! any SQLDatabase) }
+    }
+}
+
+/// A variant of `AsyncMigration` designed to simplify using SQLKit to write migrations.
+///
+/// > Warning: Use of ``AsyncSQLMigration`` will cause runtime errors if the migration is added to a Fluent
+/// > database which is not compatible with SQLKit (such as MongoDB).
+public protocol AsyncSQLMigration: AsyncMigration {
+    /// Perform the desired migration.
+    ///
+    /// - Parameter database: The database to migrate.
+    func prepare(on database: any SQLDatabase) async throws
+    
+    /// Reverse, if possible, the migration performed by ``prepare(on:)-7nlxz``.
+    ///
+    /// It is not uncommon for a given migration to be lossy if run in reverse, or to be irreversible in the
+    /// entire. While it is recommended that such a migration throw an error (thus stopping any further progression
+    /// of the revert operation), there is no requirement that it do so. In practice, most irreversible migrations
+    /// choose to simply do nothing at all in this method. Implementors should carefully consider the consequences
+    /// of progressively older migrations attempting to revert themselves afterwards before leaving this method blank.
+    ///
+    /// - Parameter database: The database to revert.
+    func revert(on database: any SQLDatabase) async throws
+}
+
+extension AsyncSQLMigration {
+    public func prepare(on database: any Database) async throws {
+        try await self.prepare(on: database as! any SQLDatabase)
+    }
+    
+    public func revert(on database: any Database) async throws {
+        try await self.revert(on: database as! any SQLDatabase)
+    }
 }
