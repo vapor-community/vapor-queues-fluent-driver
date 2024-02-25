@@ -1,4 +1,3 @@
-import protocol NIOCore.EventLoopGroup
 import class NIOCore.EventLoopFuture
 import struct Fluent.DatabaseID
 import protocol SQLKit.SQLDatabase

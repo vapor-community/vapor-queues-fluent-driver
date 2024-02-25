@@ -1,5 +1,3 @@
-import protocol FluentKit.AsyncMigration
-import protocol FluentKit.Database
 import protocol SQLKit.SQLDatabase
 import struct SQLKit.SQLRaw
 
@@ -16,20 +14,20 @@ public struct JobModelMigration: AsyncSQLMigration {
             .value("processing")
             .value("completed")
             .run()
-        try await database.create(table: JobModel.sqlTable)
+        try await database.create(table: JobModel.schema)
             .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
             .column("queue_name",      type: .text,                          .notNull)
             .column("job_name",        type: .text,                          .notNull)
-            .column("queued_at",       type: .custom(SQLRaw("TIMESTAMP")),   .notNull)
-            .column("delay_until",     type: .custom(SQLRaw("TIMESTAMP")))
+            .column("queued_at",       type: .timestamp,   .notNull)
+            .column("delay_until",     type: .timestamp)
             .column("state",           type: .custom(SQLRaw(stateEnumType)), .notNull)
             .column("max_retry_count", type: .int,                           .notNull)
             .column("attempts",        type: .int,                           .notNull)
             .column("payload",         type: .blob,                          .notNull)
-            .column("updated_at",      type: .custom(SQLRaw("TIMESTAMP")))
+            .column("updated_at",      type: .timestamp)
             .run()
         try await database.create(index: "i_\(JobModel.schema)_state_queue_delayUntil")
-            .on(JobModel.sqlTable)
+            .on(JobModel.schema)
             .column("state")
             .column("queue_name")
             .column("delay_until")
@@ -38,7 +36,7 @@ public struct JobModelMigration: AsyncSQLMigration {
     
     // See `AsyncSQLMigration.revert(on:)`.
     public func revert(on database: any SQLDatabase) async throws {
-        try await database.drop(table: JobModel.sqlTable).run()
+        try await database.drop(table: JobModel.schema).run()
         try await database.drop(enum: "\(JobModel.schema)_StoredJobStatus").run()
     }
 }
