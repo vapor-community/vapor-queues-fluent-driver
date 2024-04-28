@@ -59,8 +59,8 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssert($0 is FailingJob.Failure)
         }
         
-        XCTAssertNotNil(try app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())!
-            .query(JobModel.self).filter(\.$id == jobId.string).first().wait())
+        XCTAssertNotNil(try (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+            .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string).first().wait())
     }
     
     func testDelayedJobIsRemovedFromProcessingQueue() throws {
@@ -88,8 +88,9 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssertEqual(res.status, .ok)
         }
         
-        XCTAssertEqual(try app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())!
-            .query(JobModel.self).filter(\.$id == jobId.string).first().wait()?.state, .pending)
+        XCTAssertEqual(try (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+            .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string)
+            .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase).wait()?.state, .pending)
     }
     
     override func setUp() {
