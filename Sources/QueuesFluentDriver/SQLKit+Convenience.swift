@@ -79,13 +79,13 @@ extension SQLExpression {
 
 /// The following extension allows using `Database's` `transaction(_:)` wrapper with an `SQLDatabase`.
 extension SQLDatabase {
-    func transaction<T>(_ closure: @escaping (any SQLDatabase) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
+    func transaction<T>(_ closure: @escaping @Sendable (any SQLDatabase) -> EventLoopFuture<T>) -> EventLoopFuture<T> {
         guard let fluentSelf = self as? any Database else { fatalError("Cannot use `SQLDatabase.transaction(_:)` on a non-Fluent database.") }
         
         return fluentSelf.transaction { fluentTransaction in closure(fluentTransaction as! any SQLDatabase) }
     }
 
-    func transaction<T>(_ closure: @Sendable @escaping (any SQLDatabase) async throws -> T) async throws -> T {
+    func transaction<T>(_ closure: @escaping @Sendable (any SQLDatabase) async throws -> T) async throws -> T {
         guard let fluentSelf = self as? any Database else { fatalError("Cannot use `SQLDatabase.transaction(_:)` on a non-Fluent database.") }
         
         return try await fluentSelf.transaction { fluentTransaction in try await closure(fluentTransaction as! any SQLDatabase) }
