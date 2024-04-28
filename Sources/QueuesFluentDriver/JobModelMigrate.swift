@@ -9,11 +9,17 @@ public struct JobModelMigration: AsyncSQLMigration {
     public func prepare(on database: any SQLDatabase) async throws {
         let stateEnumType = "\(JobModel.schema)_StoredJobStatus"
         
-        try await database.create(enum: stateEnumType)
-            .value("pending")
-            .value("processing")
-            .value("completed")
-            .run()
+        switch database.dialect.enumSyntax {
+        case .typeName:
+            try await database.create(enum: stateEnumType)
+                .value("pending")
+                .value("processing")
+                .value("completed")
+                .run()
+        default:
+            break
+        }
+
         try await database.create(table: JobModel.schema)
             .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
             .column("queue_name",      type: .text,                          .notNull)
@@ -37,6 +43,11 @@ public struct JobModelMigration: AsyncSQLMigration {
     // See `AsyncSQLMigration.revert(on:)`.
     public func revert(on database: any SQLDatabase) async throws {
         try await database.drop(table: JobModel.schema).run()
-        try await database.drop(enum: "\(JobModel.schema)_StoredJobStatus").run()
+        switch database.dialect.enumSyntax {
+        case .typeName:
+            try await database.drop(enum: "\(JobModel.schema)_StoredJobStatus").run()
+        default:
+            break
+        }
     }
 }
