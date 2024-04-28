@@ -7,17 +7,20 @@ public struct JobModelMigration: AsyncSQLMigration {
     
     // See `AsyncSQLMigration.prepare(on:)`.
     public func prepare(on database: any SQLDatabase) async throws {
-        let stateEnumType = "\(JobModel.schema)_StoredJobStatus"
+        let stateEnumType: String
         
         switch database.dialect.enumSyntax {
         case .typeName:
+            stateEnumType = "\(JobModel.schema)_storedjobstatus"
             try await database.create(enum: stateEnumType)
                 .value("pending")
                 .value("processing")
                 .value("completed")
                 .run()
+        case .inline:
+            stateEnumType = "enum(\(StoredJobState.allCases.map(\.rawValue).joined(separator: ",")))"
         default:
-            break
+            stateEnumType = "varchar(16)"
         }
 
         try await database.create(table: JobModel.schema)
@@ -45,7 +48,7 @@ public struct JobModelMigration: AsyncSQLMigration {
         try await database.drop(table: JobModel.schema).run()
         switch database.dialect.enumSyntax {
         case .typeName:
-            try await database.drop(enum: "\(JobModel.schema)_StoredJobStatus").run()
+            try await database.drop(enum: "\(JobModel.schema)_storedjobstatus").run()
         default:
             break
         }
