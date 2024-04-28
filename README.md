@@ -1,74 +1,63 @@
 # QueuesFluentDriver
 
-This Vapor Queues driver stores the Queues jobs metadata into a relational database. It is an alternative to the default Redis driver.
+A driver for [Queues]. Uses [Fluent] to store job metadata in an SQL database.
 
+[Queues]: https://github.com/vapor/queues
+[Fluent]: https://github.com/vapor/fluent
 
 ## Compatibility
 
-This package makes use of some relatively recent, non standard SQL extensions added to some major database engines to support this exact use case: queuing systems, where there must be a guarantee that a task or job won't be picked by multiple workers.
+This package makes use of the `SKIP LOCKED` feature supported by some of the major database engines (most notably [PostgresSQL][postgres-skip-locked] and [MySQL][mysql-skip-locked]) when available to make a best-effort guarantee that a task or job won't be picked by multiple workers.
 
 This package should be compatible with:
 
-- Postgres >= 11
-- Mysql >= 8.0.1
-- MariaDB >= 10.3
+- PostgreSQL 11.0+
+- MySQL 8.0+
+- MariaDB 10.5+
 
-> Sqlite will only work if you have a custom, very low number of Queues workers (1-2), which makes it useless except for testing purposes
+> [!NOTE]
+> Although SQLite can be used with this package, SQLite has no support for advanced locking. It is not likely to function correctly with more than one or two queue workers.
 
-&nbsp;
+[postgres-skip-locked]: https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE
+[mysql-skip-locked]: https://dev.mysql.com/doc/refman/8.3/en/select.html#:~:text=SKIP%20LOCKED%20causes%20a
 
-## Usage
+## Getting started
 
+#### Adding the dependency
 
-
-Add it to the `Package.swift` of your Vapor4 project: 
+Add `QueuesFluentDriver` as dependency to your `Package.swift`:
 
 ```swift
-
-// swift-tools-version:5.4
-import PackageDescription
-
-let package = Package(
-    name: "app",
-    platforms: [
-        .macOS(.v10_15)
-    ],
+  dependencies: [
+    .package(url: "https://github.com/vapor-community/vapor-queues-fluent-driver.git", from: "3.0.0-beta.2"),
     ...
-    dependencies: [
-        ...
-        .package(url: "https://github.com/m-barthelemy/vapor-queues-fluent-driver.git", from: "3.0.0-beta1"),
-        ...
-    ],
-    targets: [
-        .target(name: "App", dependencies: [
-            ...
-            .product(name: "QueuesFluentDriver", package: "vapor-queues-fluent-driver"),
-            ...
-        ]),
-        ...
-    ]
-)
-
+  ]
 ```
 
-&nbsp;
-
-This package needs a table, named `_jobs_meta` by default, to store the Vapor Queues jobs. Make sure to add this to your migrations:
+Add `QueuesFluentDriver` to the target you want to use it in:
 ```swift
-// Ensure the table for storing jobs is created
-app.migrations.add(JobMetadataMigrate())
-```    
+  targets: [
+    .target(name: "MyFancyTarget", dependencies: [
+      .product(name: "QueuesFluentDriver", package: "vapor-queues-fluent-driver"),
+    ])
+  ]
+```
 
-&nbsp;
+#### Configuration
+
+This package includes a migration to create the database table which holds job metadata; add it to your Fluent configuration as you would any other migration:
+
+```swift
+app.migrations.add(JobModelMigration())
+```
 
 Finally, load the `QueuesFluentDriver` driver:
 ```swift    
 app.queues.use(.fluent())
 ```
 
-⚠️ Make sure you call `app.databases.use(...)` **before** calling `app.queues.use(.fluent())`!
-
-&nbsp;
+> [!WARNING]
+> Always call `app.databases.use(...)` **before** calling `app.queues.use(.fluent())`!
 
 ## Options
 
@@ -88,31 +77,20 @@ You can customize the name of the table used by this driver during the migration
 app.migrations.add(JobMetadataMigrate(schema: "my_jobs"))
 ```
 
-### Soft Deletes
-By default, completed jobs are deleted from the two database tables used by this driver.
-If you want to keep them, you can use Fluent's "soft delete" feature, which just sets the `deleted_at` field to a non-null value and excludes rows from queries by default:
-
-```swift
-app.queues.use(.fluent(useSoftDeletes: true))
-```
-
-When enabling this option, it is probably a good idea to cleanup the completed jobs from time to time.
-
-&nbsp;
-
-
 ## Caveats
 
-
 ### Polling interval and number of workers
-By default, the Vapor Queues package creates 2 workers per CPU core, and each worker would poll the database for jobs to be run every second.
-On a 4 cores system, this means 8 workers querying the database every second by default.
 
-You can change the jobs polling interval by calling:
+By default, the Vapor Queues system starts 2 workers per available CPU core, with each worker would polling the database once per second. On a 4-core system, this would results in 8 workers querying the database every second. Most configurations do not need this many workers.
+
+The polling interval can be changed using the `refreshInterval` configuration setting:
 
 ```swift
-app.queues.configuration.refreshInterval = .seconds(custom_value)
+app.queues.configuration.refreshInterval = .seconds(5)
 ```
 
-With Queues >=1.4.0, you can also configure the number of workers that will be started by setting `app.queues.configuration.workerCount`
+Likewise, the number of workers to start can be changed via the `workerCount` setting:
 
+```swift
+app.queues.configuration.workerCount = 1
+```

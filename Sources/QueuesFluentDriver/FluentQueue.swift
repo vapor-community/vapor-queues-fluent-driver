@@ -1,103 +1,99 @@
-import Foundation
-import Queues
-import Fluent
-import SQLKit
+@preconcurrency import Queues
+@preconcurrency import SQLKit
 
-public struct FluentQueue {
+/// An implementation of `Queue` which stores job data and metadata in a Fluent database.
+public struct FluentQueue: Queue, Sendable {
+    // See `Queue.context`.
     public let context: QueueContext
-    let db: Database
-    let dbType: QueuesFluentDbType
-    let useSoftDeletes: Bool
-}
 
-extension FluentQueue: Queue {
+    let sqlDb: any SQLDatabase
+
+    // See `Queue.get(_:)`.
     public func get(_ id: JobIdentifier) -> EventLoopFuture<JobData> {
-        return db.query(JobModel.self)
-            .filter(\.$id == id.string)
+        self.sqlDb.select()
+            .columns("payload", "max_retry_count", "job_name", "delay_until", "queued_at", "attempts")
+            .from(JobModel.schema)
+            .where("id", .equal, id.string)
             .first()
             .unwrap(or: QueuesFluentError.missingJob(id))
-            .flatMapThrowing { job in
-                return JobData(
-                    payload: Array(job.data.payload),
-                    maxRetryCount: job.data.maxRetryCount,
-                    jobName: job.data.jobName,
-                    delayUntil: job.data.delayUntil,
-                    queuedAt: job.data.queuedAt,
-                    attempts: job.data.attempts ?? 0
-                )
+            .flatMapThrowing {
+                try $0.decode(model: JobData.self, keyDecodingStrategy: .convertFromSnakeCase)
             }
     }
     
+    // See `Queue.set(_:to:)`.
     public func set(_ id: JobIdentifier, to jobStorage: JobData) -> EventLoopFuture<Void> {
-        let jobModel = JobModel(id: id, queue: queueName.string, jobData: JobDataModel(jobData: jobStorage))
-        // If the job must run at a later time, ensure it won't be picked earlier since
-        // we sort pending jobs by date when querying
-        jobModel.runAtOrAfter = jobStorage.delayUntil ?? Date()
-                
-        return jobModel.save(on: db).map { metadata in
-            return
-        }
-    }
-    
-    public func clear(_ id: JobIdentifier) -> EventLoopFuture<Void> {
-        // This does the equivalent of a Fluent Softdelete but sets the `state` to `completed`
-        return db.query(JobModel.self)
-            .filter(\.$id == id.string)
-            .filter(\.$state != .completed)
-            .first()
-            .unwrap(or: QueuesFluentError.missingJob(id))
-            .flatMap { job in
-                if self.useSoftDeletes {
-                    job.state = .completed
-                    job.deletedAt = Date()
-                    return job.update(on: self.db)
-                } else {
-                    return job.delete(force: true, on: self.db)
+        self.sqlDb.eventLoop.makeFutureWithTask {
+            try await self.sqlDb.insert(into: JobModel.schema)
+                .model(JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase)
+                .onConflict { try $0
+                    .set(excludedContentOf: JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase)
                 }
+                .run()
         }
     }
     
-    public func push(_ id: JobIdentifier) -> EventLoopFuture<Void> {
-        guard let sqlDb = db as? SQLDatabase else {
-            return self.context.eventLoop.makeFailedFuture(QueuesFluentError.databaseNotFound)
+    // See `Queue.clear(_:)`.
+    public func clear(_ id: JobIdentifier) -> EventLoopFuture<Void> {
+        self.get(id).flatMap { _ in
+            self.sqlDb.delete(from: JobModel.schema)
+                .where("id", .equal, id.string)
+                .where("state", .notEqual, StoredJobState.completed)
+                .run()
         }
-        return sqlDb
+    }
+    
+    // See `Queue.push(_:)`.
+    public func push(_ id: JobIdentifier) -> EventLoopFuture<Void> {
+        self.sqlDb
             .update(JobModel.schema)
-            .set(SQLColumn("\(FieldKey.state)"), to: SQLBind(QueuesFluentJobState.pending))
-            .where(SQLColumn("\(FieldKey.id)"), .equal, SQLBind(id.string))
+            .set("state", to: StoredJobState.pending)
+            .set("updated_at", to: .now())
+            .where("id", .equal, id.string)
             .run()
     }
     
-    /// Currently selects the oldest job pending execution
+    // See `Queue.pop()`.
     public func pop() -> EventLoopFuture<JobIdentifier?> {
-        guard let sqlDb = db as? SQLDatabase else {
-            return self.context.eventLoop.makeFailedFuture(QueuesFluentError.databaseNotFound)
-        }
-        
-        var selectQuery = sqlDb
-            .select()
-            .column("\(FieldKey.id)")
-            .from(JobModel.schema)
-            .where(SQLColumn("\(FieldKey.state)"), .equal, SQLBind(QueuesFluentJobState.pending))
-            .where(SQLColumn("\(FieldKey.queue)"), .equal, SQLBind(self.queueName.string))
-            .where(SQLColumn("\(FieldKey.runAt)"), .lessThanOrEqual, SQLBind(Date()))
-            .orderBy("\(FieldKey.runAt)")
-            .limit(1)
-        if self.dbType != .sqlite {
-            selectQuery = selectQuery.lockingClause(SQLSkipLocked.forUpdateSkipLocked)
-        }
-        
-        var popProvider: PopQueryProtocol!
-        switch (self.dbType) {
-            case .postgresql:
-                popProvider = PostgresPop()
-            case .mysql:
-                popProvider = MySQLPop()
-            case .sqlite:
-                popProvider = SqlitePop()
-        }
-        return popProvider.pop(db: db, select: selectQuery.query).optionalMap { id in
-            return JobIdentifier(string: id)
+        self.sqlDb.eventLoop.makeFutureWithTask {
+            let select = self.sqlDb
+                .select()
+                .column("id")
+                .from(JobModel.schema)
+                .where("state", .equal, StoredJobState.pending)
+                .where("queue_name", .equal, self.queueName.string)
+                .where(.dateValue(.function("coalesce", SQLColumn("delay_until"), SQLNow())), .lessThanOrEqual, .now())
+                .orderBy("delay_until")
+                .limit(1)
+                .lockingClause(SQLLockingClauseWithSkipLocked.updateSkippingLocked)
+            
+            if self.sqlDb.dialect.supportsReturning {
+                return try await self.sqlDb.update(JobModel.schema)
+                    .set("state", to: StoredJobState.processing)
+                    .set("updated_at", to: .now())
+                    .where("id", .equal, .group(select.query))
+                    .returning("id")
+                    .first(decodingColumn: "id", as: String.self)
+                    .map(JobIdentifier.init(string:))
+            } else {
+                return try await self.sqlDb.transaction { transaction in
+                    guard let id = try await transaction.raw("\(select.query)") // using raw() to make sure we run on the transaction connection
+                        .first(decodingColumn: "id", as: String.self)
+                    else {
+                        return nil
+                    }
+
+                    try await transaction
+                        .update(JobModel.schema)
+                        .set("state", to: StoredJobState.processing)
+                        .set("updated_at", to: .now())
+                        .where("id", .equal, id)
+                        .where("state", .equal, StoredJobState.pending)
+                        .run()
+                    
+                    return JobIdentifier(string: id)
+                }
+            }
         }
     }
 }

@@ -1,13 +1,11 @@
-import Queues
+@preconcurrency import struct Queues.JobIdentifier
 
 enum QueuesFluentError: Error {
-    /// Couldn't find a job with this Id
-    case missingJob(_ id: JobIdentifier)
-    /// The JobIdentifier is not a valid UUID
-    case invalidIdentifier
-    /// Error encoding the json Payload to JSON
-    case jobDataEncodingError(_ message: String? = nil)
-    case jobDataDecodingError(_ message: String? = nil)
-    /// The given DatabaseID doesn't match any existing database configured in the Vapor app.
-    case databaseNotFound
+    /// The queues system attempted to act on a job identifier which could not be found.
+    case missingJob(JobIdentifier)
+
+    /// The provided database is unsupported.
+    ///
+    /// This error is thrown if a non-SQL database (such as MongoDB) is specified.
+    case unsupportedDatabase
 }

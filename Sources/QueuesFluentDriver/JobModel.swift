@@ -1,59 +1,65 @@
-import Foundation
-import Fluent
-import Queues
+import struct Foundation.Date
+import struct Queues.JobData
+import struct Queues.JobIdentifier
+import struct Queues.QueueName
 
-public enum QueuesFluentJobState: String, Codable, CaseIterable {
-    /// Ready to be picked up for execution
+/// The various states of a job currently stored in the database.
+enum StoredJobState: String, Codable, CaseIterable {
+    /// Job is ready to be picked up for execution.
     case pending
+    
+    /// Job is in progress.
     case processing
-    /// Executed, regardless if it was successful or not
+    
+    /// Job has finished, whether successfully or not.
     case completed
 }
 
-extension FieldKey {
-    static var queue: Self { "queue" }
-    static var data: Self { "data" }
-    static var state: Self { "state" }
-
-    static var runAt: Self { "run_at" }
-    static var updatedAt: Self { "updated_at" }
-    static var deletedAt: Self { "deleted_at" }
-}
-
-class JobModel: Model {
-    public required init() {}
+/// Encapsulates a job's metadata and `JobData`.
+struct JobModel: Codable, Sendable {
+    /// The name of the model's table.
+    static let schema = "_jobs_meta"
     
-    public static var schema = "_jobs_meta"
+    /// The job identifier. Corresponds directly to a `JobIdentifier`.
+    let id: String?
     
-    /// The unique Job ID
-    @ID(custom: .id, generatedBy: .user)
-    var id: String?
+    /// The queue to which the job was dispatched. Corresponds directly to a `QueueName`.
+    let queueName: String
     
-    /// The Job key
-    @Field(key: .queue)
-    var queue: String
+    /// The name of the job.
+    let jobName: String
+    
+    /// The date this job was queued.
+    let queuedAt: Date
+    
+    /// An optional `Date` before which the job shall not run.
+    let delayUntil: Date?
     
     /// The current state of the Job
-    @Field(key: .state)
-    var state: QueuesFluentJobState
+    let state: StoredJobState
     
-    /// Earliest date the job can run
-    @OptionalField(key: .runAt)
-    var runAtOrAfter: Date?
+    /// The maximum retry count for the job.
+    let maxRetryCount: Int
     
-    @Timestamp(key: .updatedAt, on: .update)
-    var updatedAt: Date?
+    /// The number of attempts made to run the job so far.
+    let attempts: Int
     
-    @Timestamp(key: .deletedAt, on: .delete)
-    var deletedAt: Date?
+    /// The job's payload.
+    let payload: [UInt8]
     
-    @Group(key: .data)
-    var data: JobDataModel
+    /// The standard automatic update tracking timestamp.
+    let updatedAt: Date
     
-    init(id: JobIdentifier, queue: String, jobData: JobDataModel) {
+    init(id: JobIdentifier, queue: QueueName, jobData: JobData) {
         self.id = id.string
-        self.queue = queue
+        self.queueName = queue.string
+        self.jobName = jobData.jobName
+        self.queuedAt = jobData.queuedAt
+        self.delayUntil = jobData.delayUntil
         self.state = .pending
-        self.data = jobData
+        self.maxRetryCount = jobData.maxRetryCount
+        self.attempts = jobData.attempts ?? 0
+        self.payload = jobData.payload
+        self.updatedAt = .init()
     }
 }
