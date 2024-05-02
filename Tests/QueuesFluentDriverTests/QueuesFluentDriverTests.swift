@@ -7,7 +7,7 @@ import Logging
 import FluentSQLiteDriver
 
 final class QueuesFluentDriverTests: XCTestCase {
-    func testApplication() throws {
+    func testApplication() async throws {
         let app = Application(.testing)
         defer { app.shutdown() }
 
@@ -19,7 +19,7 @@ final class QueuesFluentDriverTests: XCTestCase {
 
         app.queues.use(.fluent())
         
-        try app.autoMigrate().wait()
+        try await app.autoMigrate()
 
         app.get("send-email") { req in
             req.queue.dispatch(Email.self, .init(to: "tanner@vapor.codes"))
@@ -31,11 +31,13 @@ final class QueuesFluentDriverTests: XCTestCase {
         }
         
         XCTAssertEqual(email.sent, [])
-        try app.queues.queue.worker.run().wait()
+        try await app.queues.queue.worker.run().get()
         XCTAssertEqual(email.sent, [.init(to: "tanner@vapor.codes")])
+        
+        try await app.autoRevert()
     }
     
-    func testFailedJobLoss() throws {
+    func testFailedJobLoss() async throws {
         let app = Application(.testing)
         defer { app.shutdown() }
 
@@ -43,7 +45,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         app.queues.add(FailingJob())
         app.queues.use(.fluent())
         app.migrations.add(JobModelMigration())
-        try app.autoMigrate().wait()
+        try await app.autoMigrate()
 
         let jobId = JobIdentifier()
         app.get("test") { req in
@@ -55,15 +57,17 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssertEqual(res.status, .ok)
         }
         
-        XCTAssertThrowsError(try app.queues.queue.worker.run().wait()) {
+        await XCTAssertThrowsErrorAsync(try await app.queues.queue.worker.run().get()) {
             XCTAssert($0 is FailingJob.Failure)
         }
         
-        XCTAssertNotNil(try (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
-            .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string).first().wait())
+        await XCTAssertNotNilAsync(try await (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+            .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string).first())
+            
+        try await app.autoRevert()
     }
     
-    func testDelayedJobIsRemovedFromProcessingQueue() throws {
+    func testDelayedJobIsRemovedFromProcessingQueue() async throws {
         let app = Application(.testing)
         defer { app.shutdown() }
 
@@ -74,7 +78,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         app.queues.use(.fluent())
 
         app.migrations.add(JobModelMigration())
-        try app.autoMigrate().wait()
+        try await app.autoMigrate()
 
         let jobId = JobIdentifier()
         app.get("delay-job") { req in
@@ -88,9 +92,25 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssertEqual(res.status, .ok)
         }
         
-        XCTAssertEqual(try (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+        await XCTAssertEqualAsync(try await (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
             .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string)
-            .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase).wait()?.state, .pending)
+            .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)?.state, .pending)
+        
+        try await app.autoRevert()
+    }
+    
+    func testCoverageForFailingQueue() {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+        let queue = FailingQueue(
+            failure: QueuesFluentError.unsupportedDatabase,
+            context: .init(queueName: .init(string: ""), configuration: .init(), application: app, logger: .init(label: ""), on: app.eventLoopGroup.any())
+        )
+        XCTAssertThrowsError(try queue.get(.init()).wait())
+        XCTAssertThrowsError(try queue.set(.init(), to: JobData(payload: [], maxRetryCount: 0, jobName: "", delayUntil: nil, queuedAt: .init())).wait())
+        XCTAssertThrowsError(try queue.clear(.init()).wait())
+        XCTAssertThrowsError(try queue.push(.init()).wait())
+        XCTAssertThrowsError(try queue.pop().wait())
     }
     
     override func setUp() {
@@ -132,6 +152,47 @@ struct FailingJob: Job {
     
     func error(_ context: QueueContext, _ error: any Error, _ payload: [String: String]) -> EventLoopFuture<Void> {
         context.eventLoop.makeFailedFuture(Failure())
+    }
+}
+
+func XCTAssertEqualAsync<T>(
+    _ expression1: @autoclosure () async throws -> T,
+    _ expression2: @autoclosure () async throws -> T,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath, line: UInt = #line
+) async where T: Equatable {
+    do {
+        let expr1 = try await expression1(), expr2 = try await expression2()
+        return XCTAssertEqual(expr1, expr2, message(), file: file, line: line)
+    } catch {
+        return XCTAssertEqual(try { () -> Bool in throw error }(), false, message(), file: file, line: line)
+    }
+}
+
+func XCTAssertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath, line: UInt = #line,
+    _ callback: (any Error) -> Void = { _ in }
+) async {
+    do {
+        _ = try await expression()
+        XCTAssertThrowsError({}(), message(), file: file, line: line, callback)
+    } catch {
+        XCTAssertThrowsError(try { throw error }(), message(), file: file, line: line, callback)
+    }
+}
+
+func XCTAssertNotNilAsync(
+    _ expression: @autoclosure () async throws -> Any?,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath, line: UInt = #line
+) async {
+    do {
+        let result = try await expression()
+        XCTAssertNotNil(result, message(), file: file, line: line)
+    } catch {
+        return XCTAssertNotNil(try { throw error }(), message(), file: file, line: line)
     }
 }
 
