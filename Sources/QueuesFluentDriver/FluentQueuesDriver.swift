@@ -35,7 +35,7 @@ public struct FluentQueuesDriver: QueuesDriver {
     public func shutdown() {}
 }
 
-private struct FailingQueue: Queue {
+/*private*/ struct FailingQueue: Queue {
     let failure: any Error
     let context: QueueContext
 

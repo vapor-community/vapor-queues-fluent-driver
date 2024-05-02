@@ -70,8 +70,6 @@ extension SQLExpression {
     
     static func now() -> Self where Self == SQLDateValue<SQLNow> { .now() }
 
-    static func bind(_ value: some Encodable & Sendable) -> Self where Self == SQLBind { .init(value) }
-    
     static func function(_ name: String, _ args: any SQLExpression...) -> Self where Self == SQLFunction { .init(name, args: args) }
     
     static func group(_ expr: some SQLExpression) -> Self where Self == SQLGroupExpression { .init(expr) }
