@@ -18,7 +18,7 @@ public struct JobModelMigration: AsyncSQLMigration {
                 .value("completed")
                 .run()
         case .inline:
-            stateEnumType = "enum(\(StoredJobState.allCases.map(\.rawValue).joined(separator: ",")))"
+            stateEnumType = "enum('\(StoredJobState.allCases.map(\.rawValue).joined(separator: "','"))')"
         default:
             stateEnumType = "varchar(16)"
         }

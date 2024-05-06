@@ -5,19 +5,46 @@ import Logging
 @testable import QueuesFluentDriver
 @preconcurrency import Queues
 import FluentSQLiteDriver
+import FluentPostgresDriver
+import FluentMySQLDriver
+import NIOSSL
 
 final class QueuesFluentDriverTests: XCTestCase {
+    var dbid: DatabaseID { .sqlite }
+    
+    private func useDbs(_ app: Application) throws {
+        app.databases.use(.sqlite(.memory), as: .sqlite)
+        app.databases.use(DatabaseConfigurationFactory.postgres(configuration: .init(
+            hostname: Environment.get("DATABASE_HOST") ?? "localhost",
+            port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
+            username: Environment.get("DATABASE_USERNAME") ?? "test_username",
+            password: Environment.get("DATABASE_PASSWORD") ?? "test_password",
+            database: Environment.get("DATABASE_NAME") ?? "test_database",
+            tls: .prefer(try .init(configuration: .clientDefault)))
+        ), as: .psql)
+        var config = TLSConfiguration.clientDefault
+        config.certificateVerification = .none
+        app.databases.use(DatabaseConfigurationFactory.mysql(configuration: .init(
+            hostname: Environment.get("DATABASE_HOST") ?? "localhost",
+            port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? MySQLConfiguration.ianaPortNumber,
+            username: Environment.get("DATABASE_USERNAME") ?? "test_username",
+            password: Environment.get("DATABASE_PASSWORD") ?? "test_password",
+            database: Environment.get("DATABASE_NAME") ?? "test_database",
+            tlsConfiguration: config
+        )), as: .mysql)
+    }
+    
     func testApplication() async throws {
         let app = Application(.testing)
         defer { app.shutdown() }
 
-        app.databases.use(.sqlite(.memory), as: .sqlite)
-        app.migrations.add(JobModelMigration())
+        try self.useDbs(app)
+        app.migrations.add(JobModelMigration(), to: self.dbid)
         
         let email = Email()
         app.queues.add(email)
 
-        app.queues.use(.fluent())
+        app.queues.use(.fluent(self.dbid))
         
         try await app.autoMigrate()
 
@@ -41,10 +68,10 @@ final class QueuesFluentDriverTests: XCTestCase {
         let app = Application(.testing)
         defer { app.shutdown() }
 
-        app.databases.use(.sqlite(.memory), as: .sqlite)
+        try self.useDbs(app)
         app.queues.add(FailingJob())
-        app.queues.use(.fluent())
-        app.migrations.add(JobModelMigration())
+        app.queues.use(.fluent(self.dbid))
+        app.migrations.add(JobModelMigration(), to: self.dbid)
         try await app.autoMigrate()
 
         let jobId = JobIdentifier()
@@ -61,7 +88,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssert($0 is FailingJob.Failure)
         }
         
-        await XCTAssertNotNilAsync(try await (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+        await XCTAssertNotNilAsync(try await (app.databases.database(self.dbid, logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
             .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string).first())
             
         try await app.autoRevert()
@@ -71,13 +98,13 @@ final class QueuesFluentDriverTests: XCTestCase {
         let app = Application(.testing)
         defer { app.shutdown() }
 
-        app.databases.use(.sqlite(.memory), as: .sqlite)
+        try self.useDbs(app)
 
         app.queues.add(DelayedJob())
 
-        app.queues.use(.fluent())
+        app.queues.use(.fluent(self.dbid))
 
-        app.migrations.add(JobModelMigration())
+        app.migrations.add(JobModelMigration(), to: self.dbid)
         try await app.autoMigrate()
 
         let jobId = JobIdentifier()
@@ -92,7 +119,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             XCTAssertEqual(res.status, .ok)
         }
         
-        await XCTAssertEqualAsync(try await (app.databases.database(logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+        await XCTAssertEqualAsync(try await (app.databases.database(self.dbid, logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
             .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string)
             .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)?.state, .pending)
         

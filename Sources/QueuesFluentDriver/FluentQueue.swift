@@ -1,6 +1,7 @@
 @preconcurrency import Queues
 @preconcurrency import SQLKit
 import NIOConcurrencyHelpers
+import struct Foundation.Data
 
 /// An implementation of `Queue` which stores job data and metadata in a Fluent database.
 public struct FluentQueue: Queue, Sendable {
@@ -14,13 +15,15 @@ public struct FluentQueue: Queue, Sendable {
     // See `Queue.get(_:)`.
     public func get(_ id: JobIdentifier) -> EventLoopFuture<JobData> {
         self.sqlDb.select()
-            .columns("payload", "max_retry_count", "job_name", "delay_until", "queued_at", "attempts")
+            .columns("payload", "max_retry_count", "queue_name", "state", "job_name", "delay_until", "queued_at", "attempts", "updated_at")
             .from(JobModel.schema)
             .where("id", .equal, id.string)
             .first()
             .unwrap(or: QueuesFluentError.missingJob(id))
             .flatMapThrowing {
-                try $0.decode(model: JobData.self, keyDecodingStrategy: .convertFromSnakeCase)
+                try $0.decode(model: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)
+            }.map {
+                .init(payload: .init($0.payload), maxRetryCount: $0.maxRetryCount, jobName: $0.jobName, delayUntil: $0.delayUntil, queuedAt: $0.queuedAt)
             }
     }
     
@@ -28,10 +31,20 @@ public struct FluentQueue: Queue, Sendable {
     public func set(_ id: JobIdentifier, to jobStorage: JobData) -> EventLoopFuture<Void> {
         self.sqlDb.eventLoop.makeFutureWithTask {
             try await self.sqlDb.insert(into: JobModel.schema)
-                .model(JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase)
-                .onConflict { try $0
-                    .set(excludedContentOf: JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase)
-                }
+                .columns("id", "queue_name", "job_name", "queued_at", "delay_until", "state", "max_retry_count", "attempts", "payload", "updated_at")
+                .values(
+                    SQLBind(id.string),
+                    SQLBind(self.queueName.string),
+                    SQLBind(jobStorage.jobName),
+                    SQLBind(jobStorage.queuedAt),
+                    SQLBind(jobStorage.delayUntil),
+                    SQLLiteral.string(StoredJobState.pending.rawValue),
+                    SQLBind(jobStorage.maxRetryCount),
+                    SQLBind(jobStorage.attempts),
+                    SQLBind(Data(jobStorage.payload)),
+                    .now()
+                )
+                // .model(JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase) // because enums!
                 .run()
         }
     }
@@ -41,7 +54,7 @@ public struct FluentQueue: Queue, Sendable {
         self.get(id).flatMap { _ in
             self.sqlDb.delete(from: JobModel.schema)
                 .where("id", .equal, id.string)
-                .where("state", .notEqual, StoredJobState.completed)
+                .where("state", .notEqual, SQLLiteral.string(StoredJobState.completed.rawValue))
                 .run()
         }
     }
@@ -50,7 +63,7 @@ public struct FluentQueue: Queue, Sendable {
     public func push(_ id: JobIdentifier) -> EventLoopFuture<Void> {
         self.sqlDb
             .update(JobModel.schema)
-            .set("state", to: StoredJobState.pending)
+            .set("state", to: SQLLiteral.string(StoredJobState.pending.rawValue))
             .set("updated_at", to: .now())
             .where("id", .equal, id.string)
             .run()
@@ -84,7 +97,7 @@ public struct FluentQueue: Queue, Sendable {
                 .select()
                 .column("id")
                 .from(JobModel.schema)
-                .where("state", .equal, StoredJobState.pending)
+                .where("state", .equal, SQLLiteral.string(StoredJobState.pending.rawValue))
                 .where("queue_name", .equal, self.queueName.string)
                 .where(.dateValue(.function("coalesce", SQLColumn("delay_until"), SQLNow())), .lessThanOrEqual, .now())
                 .orderBy("delay_until")
@@ -93,7 +106,7 @@ public struct FluentQueue: Queue, Sendable {
             
             if self.sqlDb.dialect.supportsReturning {
                 return try await self.sqlDb.update(JobModel.schema)
-                    .set("state", to: StoredJobState.processing)
+                    .set("state", to: SQLLiteral.string(StoredJobState.processing.rawValue))
                     .set("updated_at", to: .now())
                     .where("id", .equal, .group(select.query))
                     .returning("id")
@@ -109,10 +122,10 @@ public struct FluentQueue: Queue, Sendable {
 
                     try await transaction
                         .update(JobModel.schema)
-                        .set("state", to: StoredJobState.processing)
+                        .set("state", to: SQLLiteral.string(StoredJobState.processing.rawValue))
                         .set("updated_at", to: .now())
                         .where("id", .equal, id)
-                        .where("state", .equal, StoredJobState.pending)
+                        .where("state", .equal, SQLLiteral.string(StoredJobState.pending.rawValue))
                         .run()
                     
                     return JobIdentifier(string: id)

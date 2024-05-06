@@ -1,4 +1,5 @@
 import struct Foundation.Date
+import struct Foundation.Data
 import struct Queues.JobData
 import struct Queues.JobIdentifier
 import struct Queues.QueueName
@@ -45,7 +46,7 @@ struct JobModel: Codable, Sendable {
     let attempts: Int
     
     /// The job's payload.
-    let payload: [UInt8]
+    let payload: Data
     
     /// The standard automatic update tracking timestamp.
     let updatedAt: Date
@@ -59,7 +60,7 @@ struct JobModel: Codable, Sendable {
         self.state = .pending
         self.maxRetryCount = jobData.maxRetryCount
         self.attempts = jobData.attempts ?? 0
-        self.payload = jobData.payload
+        self.payload = Data(jobData.payload)
         self.updatedAt = .init()
     }
 }
