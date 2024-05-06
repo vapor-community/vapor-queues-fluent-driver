@@ -9,6 +9,8 @@ struct SQLNow: SQLExpression {
         switch serializer.dialect.name {
         case "sqlite": // For SQLite, write out the literal string 'now' (see below)
             SQLLiteral.string("now").serialize(to: &serializer)
+        case "postgresql": // For Postgres, "current_timestamp" is a keyword, not a function, so use "now()" instead.
+            SQLFunction("now").serialize(to: &serializer)
         default: // Everywhere else, just call the SQL standard function.
             SQLFunction("current_timestamp").serialize(to: &serializer)
         }
