@@ -36,9 +36,11 @@ struct SQLDateValue<E: SQLExpression>: SQLExpression {
     }
 }
 
-/// An alternative of `SQLLockingClause` which specifies the `SKIP LOCKED` modifier when the underlying database
+/// An alternative to `SQLLockingClause` which specifies the `SKIP LOCKED` modifier when the underlying database
 /// supports it. As MySQL's and PostgreSQL's manuals both note, this should not be used except in very specific
 /// scenarios, such as that of this package.
+///
+/// It is safe to use this expression with SQLite; its dialect correctly denies support for locking expressions.
 enum SQLLockingClauseWithSkipLocked: SQLExpression {
     /// Request an exclusive "writer" lock, skipping rows that are already locked.
     case updateSkippingLocked
