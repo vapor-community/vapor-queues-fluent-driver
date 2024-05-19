@@ -1,5 +1,5 @@
 @preconcurrency import Queues
-@preconcurrency import SQLKit
+import SQLKit
 import NIOConcurrencyHelpers
 import struct Foundation.Data
 

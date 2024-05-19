@@ -10,14 +10,14 @@ let package = Package(
         .library(name: "QueuesFluentDriver", targets: ["QueuesFluentDriver"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.92.1"),
-        .package(url: "https://github.com/vapor/fluent.git", from: "4.9.0"),
-        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.45.1"),
-        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.29.2"),
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.100.0"),
+        .package(url: "https://github.com/vapor/fluent.git", from: "4.10.0"),
+        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.48.4"),
+        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.30.0"),
         .package(url: "https://github.com/vapor/queues.git", from: "1.13.0"),
-        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.6.0"),
-        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.9.0"),
-        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.0.0"),
+        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.7.1"),
+        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.9.1"),
+        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.5.0"),
     ],
     targets: [
         .target(
@@ -50,6 +50,4 @@ var swiftSettings: [SwiftSetting] { [
     .enableUpcomingFeature("ForwardTrailingClosures"),
     .enableUpcomingFeature("ConciseMagicFile"),
     .enableUpcomingFeature("DisableOutwardActorInference"),
-    .enableUpcomingFeature("StrictConcurrency"),
-    .enableExperimentalFeature("StrictConcurrency=complete"),
 ] }

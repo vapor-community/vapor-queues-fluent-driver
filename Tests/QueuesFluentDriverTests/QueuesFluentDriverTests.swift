@@ -11,6 +11,7 @@ import NIOSSL
 
 final class QueuesFluentDriverTests: XCTestCase {
     var dbid: DatabaseID { .sqlite }
+    var app: Application!
     
     private func useDbs(_ app: Application) throws {
         app.databases.use(.sqlite(.memory), as: .sqlite)
@@ -35,103 +36,88 @@ final class QueuesFluentDriverTests: XCTestCase {
     }
     
     func testApplication() async throws {
-        let app = Application(.testing)
-        defer { app.shutdown() }
-
-        try self.useDbs(app)
-        app.migrations.add(JobModelMigration(), to: self.dbid)
+        self.app.migrations.add(JobModelMigration(), to: self.dbid)
         
         let email = Email()
-        app.queues.add(email)
+        self.app.queues.add(email)
 
-        app.queues.use(.fluent(self.dbid))
+        self.app.queues.use(.fluent(self.dbid))
         
-        try await app.autoMigrate()
+        try await self.app.autoMigrate()
 
-        app.get("send-email") { req in
+        self.app.get("send-email") { req in
             req.queue.dispatch(Email.self, .init(to: "tanner@vapor.codes"))
                 .map { HTTPStatus.ok }
         }
 
-        try app.testable().test(.GET, "send-email") { res in
+        try await self.app.testable().test(.GET, "send-email") { res async in
             XCTAssertEqual(res.status, .ok)
         }
         
         XCTAssertEqual(email.sent, [])
-        try await app.queues.queue.worker.run().get()
+        try await self.app.queues.queue.worker.run().get()
         XCTAssertEqual(email.sent, [.init(to: "tanner@vapor.codes")])
         
-        try await app.autoRevert()
+        try await self.app.autoRevert()
     }
     
     func testFailedJobLoss() async throws {
-        let app = Application(.testing)
-        defer { app.shutdown() }
-
-        try self.useDbs(app)
-        app.queues.add(FailingJob())
-        app.queues.use(.fluent(self.dbid))
-        app.migrations.add(JobModelMigration(), to: self.dbid)
-        try await app.autoMigrate()
+        self.app.queues.add(FailingJob())
+        self.app.queues.use(.fluent(self.dbid))
+        self.app.migrations.add(JobModelMigration(), to: self.dbid)
+        try await self.app.autoMigrate()
 
         let jobId = JobIdentifier()
-        app.get("test") { req in
+        self.app.get("test") { req in
             req.queue.dispatch(FailingJob.self, ["foo": "bar"], id: jobId)
                 .map { HTTPStatus.ok }
         }
 
-        try app.testable().test(.GET, "test") { res in
+        try await self.app.testable().test(.GET, "test") { res async in
             XCTAssertEqual(res.status, .ok)
         }
         
-        await XCTAssertThrowsErrorAsync(try await app.queues.queue.worker.run().get()) {
+        await XCTAssertThrowsErrorAsync(try await self.app.queues.queue.worker.run().get()) {
             XCTAssert($0 is FailingJob.Failure)
         }
         
-        await XCTAssertNotNilAsync(try await (app.databases.database(self.dbid, logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+        await XCTAssertNotNilAsync(try await (self.app.databases.database(self.dbid, logger: .init(label: ""), on: self.app.eventLoopGroup.any())! as! any SQLDatabase)
             .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string).first())
             
-        try await app.autoRevert()
+        try await self.app.autoRevert()
     }
     
     func testDelayedJobIsRemovedFromProcessingQueue() async throws {
-        let app = Application(.testing)
-        defer { app.shutdown() }
+        self.app.queues.add(DelayedJob())
 
-        try self.useDbs(app)
+        self.app.queues.use(.fluent(self.dbid))
 
-        app.queues.add(DelayedJob())
-
-        app.queues.use(.fluent(self.dbid))
-
-        app.migrations.add(JobModelMigration(), to: self.dbid)
-        try await app.autoMigrate()
+        self.app.migrations.add(JobModelMigration(), to: self.dbid)
+        try await self.app.autoMigrate()
 
         let jobId = JobIdentifier()
-        app.get("delay-job") { req in
+        self.app.get("delay-job") { req in
             req.queue.dispatch(DelayedJob.self, .init(name: "vapor"),
                                delayUntil: Date().addingTimeInterval(3600),
                                id: jobId)
                 .map { HTTPStatus.ok }
         }
 
-        try app.testable().test(.GET, "delay-job") { res in
+        try await self.app.testable().test(.GET, "delay-job") { res async in
             XCTAssertEqual(res.status, .ok)
         }
         
-        await XCTAssertEqualAsync(try await (app.databases.database(self.dbid, logger: .init(label: ""), on: app.eventLoopGroup.any())! as! any SQLDatabase)
+        await XCTAssertEqualAsync(try await (self.app.databases.database(self.dbid, logger: .init(label: ""), on: self.app.eventLoopGroup.any())! as! any SQLDatabase)
             .select().columns("*").from(JobModel.schema).where("id", .equal, jobId.string)
             .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)?.state, .pending)
         
-        try await app.autoRevert()
+        try await self.app.autoRevert()
     }
     
     func testCoverageForFailingQueue() {
-        let app = Application(.testing)
-        defer { app.shutdown() }
         let queue = FailingQueue(
             failure: QueuesFluentError.unsupportedDatabase,
-            context: .init(queueName: .init(string: ""), configuration: .init(), application: app, logger: .init(label: ""), on: app.eventLoopGroup.any())
+            context: .init(queueName: .init(string: ""), configuration: .init(), application: self.app, logger: .init(label: ""), on: self.app.eventLoopGroup.any())
         )
         XCTAssertThrowsError(try queue.get(.init()).wait())
         XCTAssertThrowsError(try queue.set(.init(), to: JobData(payload: [], maxRetryCount: 0, jobName: "", delayUntil: nil, queuedAt: .init())).wait())
@@ -140,8 +126,16 @@ final class QueuesFluentDriverTests: XCTestCase {
         XCTAssertThrowsError(try queue.pop().wait())
     }
     
-    override func setUp() {
+    override func setUp() async throws {
         XCTAssert(isLoggingConfigured)
+        
+        self.app = try await Application.make(.testing)
+        try self.useDbs(self.app)
+    }
+    
+    override func tearDown() async throws {
+        try await self.app.asyncShutdown()
+        self.app = nil
     }
 }
 
