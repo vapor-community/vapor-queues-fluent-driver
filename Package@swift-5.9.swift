@@ -18,9 +18,9 @@ let package = Package(
         .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.48.4"),
         .package(url: "https://github.com/vapor/sql-kit.git", from: "3.30.0"),
         .package(url: "https://github.com/vapor/queues.git", from: "1.13.0"),
-        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.7.1"),
-        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.9.1"),
-        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.5.0"),
+        //.package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.7.1"),
+        //.package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.9.1"),
+        //.package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.5.0"),
     ],
     targets: [
         .target(
@@ -39,9 +39,9 @@ let package = Package(
             name: "QueuesFluentDriverTests",
             dependencies: [
                 .product(name: "XCTVapor", package: "vapor"),
-                .product(name: "FluentSQLiteDriver", package: "fluent-sqlite-driver"),
-                .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
-                .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"),
+                //.product(name: "FluentSQLiteDriver", package: "fluent-sqlite-driver"),
+                //.product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
+                //.product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"),
                 .target(name: "QueuesFluentDriver"),
             ],
             swiftSettings: swiftSettings

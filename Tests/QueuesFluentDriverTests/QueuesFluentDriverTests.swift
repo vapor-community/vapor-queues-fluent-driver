@@ -2,19 +2,29 @@ import XCTest
 import XCTVapor
 import FluentKit
 import Logging
+import SQLKit
 @testable import QueuesFluentDriver
 @preconcurrency import Queues
+#if canImport(FluentSQLiteDriver)
 import FluentSQLiteDriver
+#endif
+#if canImport(FluentPostgresDriver)
 import FluentPostgresDriver
+#endif
+#if canImport(FluentMySQLDriver)
 import FluentMySQLDriver
+#endif
 import NIOSSL
 
 final class QueuesFluentDriverTests: XCTestCase {
-    var dbid: DatabaseID { .sqlite }
+    var dbid: DatabaseID { .init(string: "sqlite") }
     var app: Application!
     
     private func useDbs(_ app: Application) throws {
+        #if canImport(FluentSQLiteDriver)
         app.databases.use(.sqlite(.memory), as: .sqlite)
+        #endif
+        #if canImport(FluentPostgresDriver)
         app.databases.use(DatabaseConfigurationFactory.postgres(configuration: .init(
             hostname: Environment.get("DATABASE_HOST") ?? "localhost",
             port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
@@ -23,6 +33,8 @@ final class QueuesFluentDriverTests: XCTestCase {
             database: Environment.get("DATABASE_NAME") ?? "test_database",
             tls: .prefer(try .init(configuration: .clientDefault)))
         ), as: .psql)
+        #endif
+        #if canImport(FluentMySQLDriver)
         var config = TLSConfiguration.clientDefault
         config.certificateVerification = .none
         app.databases.use(DatabaseConfigurationFactory.mysql(configuration: .init(
@@ -33,6 +45,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             database: Environment.get("DATABASE_NAME") ?? "test_database",
             tlsConfiguration: config
         )), as: .mysql)
+        #endif
     }
     
     func testApplication() async throws {
