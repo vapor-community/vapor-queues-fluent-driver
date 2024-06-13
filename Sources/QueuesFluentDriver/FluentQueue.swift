@@ -54,7 +54,6 @@ public struct FluentQueue: Queue, Sendable {
         self.get(id).flatMap { _ in
             self.sqlDb.delete(from: JobModel.schema)
                 .where("id", .equal, id.string)
-                .where("state", .notEqual, SQLLiteral.string(StoredJobState.completed.rawValue))
                 .run()
         }
     }

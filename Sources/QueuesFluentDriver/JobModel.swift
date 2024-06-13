@@ -4,16 +4,13 @@ import struct Queues.JobData
 import struct Queues.JobIdentifier
 import struct Queues.QueueName
 
-/// The various states of a job currently stored in the database.
+/// The state of a job currently stored in the database.
 enum StoredJobState: String, Codable, CaseIterable {
     /// Job is ready to be picked up for execution.
     case pending
     
     /// Job is in progress.
     case processing
-    
-    /// Job has finished, whether successfully or not.
-    case completed
 }
 
 /// Encapsulates a job's metadata and `JobData`.
