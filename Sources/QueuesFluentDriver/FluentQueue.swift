@@ -102,18 +102,19 @@ public struct FluentQueue: Queue, Sendable {
                 .orderBy("delay_until")
                 .limit(1)
                 .lockingClause(self._sqlLockingClause.withLockedValue { $0! }) // we've always set it by the time we get here
+                .query
             
             if self.sqlDb.dialect.supportsReturning {
                 return try await self.sqlDb.update(JobModel.schema)
                     .set("state", to: SQLLiteral.string(StoredJobState.processing.rawValue))
                     .set("updated_at", to: .now())
-                    .where("id", .equal, .group(select.query))
+                    .where("id", .equal, .group(select))
                     .returning("id")
                     .first(decodingColumn: "id", as: String.self)
                     .map(JobIdentifier.init(string:))
             } else {
                 return try await self.sqlDb.transaction { transaction in
-                    guard let id = try await transaction.raw("\(select.query)") // using raw() to make sure we run on the transaction connection
+                    guard let id = try await transaction.raw("\(select)") // using raw() to make sure we run on the transaction connection
                         .first(decodingColumn: "id", as: String.self)
                     else {
                         return nil
