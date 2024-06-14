@@ -28,11 +28,11 @@ final class QueuesFluentDriverTests: XCTestCase {
 
         #if canImport(FluentPostgresDriver)
         app.databases.use(DatabaseConfigurationFactory.postgres(configuration: .init(
-            hostname: Environment.get("DATABASE_HOST") ?? "localhost",
-            port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
-            username: Environment.get("DATABASE_USERNAME") ?? "test_username",
-            password: Environment.get("DATABASE_PASSWORD") ?? "test_password",
-            database: Environment.get("DATABASE_NAME") ?? "test_database",
+            hostname: env("POSTGRES_HOST")     ?? env("DATABASE_HOST")     ?? "localhost",
+            port:     (env("POSTGRES_PORT")    ?? env("DATABASE_PORT")).flatMap(Int.init(_:)) ?? SQLPostgresConfiguration.ianaPortNumber,
+            username: env("POSTGRES_USERNAME") ?? env("DATABASE_USERNAME") ?? "test_username",
+            password: env("POSTGRES_PASSWORD") ?? env("DATABASE_PASSWORD") ?? "test_password",
+            database: env("POSTGRES_NAME")     ?? env("DATABASE_NAME")     ?? "test_database",
             tls: .prefer(try .init(configuration: .clientDefault)))
         ), as: .psql)
         #endif
@@ -41,11 +41,11 @@ final class QueuesFluentDriverTests: XCTestCase {
         var config = TLSConfiguration.clientDefault
         config.certificateVerification = .none
         app.databases.use(DatabaseConfigurationFactory.mysql(configuration: .init(
-            hostname: Environment.get("DATABASE_HOST") ?? "localhost",
-            port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? MySQLConfiguration.ianaPortNumber,
-            username: Environment.get("DATABASE_USERNAME") ?? "test_username",
-            password: Environment.get("DATABASE_PASSWORD") ?? "test_password",
-            database: Environment.get("DATABASE_NAME") ?? "test_database",
+            hostname: env("MYSQL_HOST")     ?? env("DATABASE_HOST")     ?? "localhost",
+            port:     (env("MYSQL_PORT")    ?? env("DATABASE_PORT")).flatMap(Int.init(_:)) ?? MySQLConfiguration.ianaPortNumber,
+            username: env("MYSQL_USERNAME") ?? env("DATABASE_USERNAME") ?? "test_username",
+            password: env("MYSQL_PASSWORD") ?? env("DATABASE_PASSWORD") ?? "test_password",
+            database: env("MYSQL_NAME")     ?? env("DATABASE_NAME")     ?? "test_database",
             tlsConfiguration: config
         )), as: .mysql)
         #endif
@@ -277,7 +277,7 @@ func XCTAssertNotNilAsync(
 }
 
 func env(_ name: String) -> String? {
-    return ProcessInfo.processInfo.environment[name]
+    ProcessInfo.processInfo.environment[name]
 }
 
 let isLoggingConfigured: Bool = {
