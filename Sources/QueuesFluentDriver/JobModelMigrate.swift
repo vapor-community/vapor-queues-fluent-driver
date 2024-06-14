@@ -15,7 +15,6 @@ public struct JobModelMigration: AsyncSQLMigration {
             try await database.create(enum: stateEnumType)
                 .value("pending")
                 .value("processing")
-                .value("completed")
                 .run()
         case .inline:
             stateEnumType = "enum('\(StoredJobState.allCases.map(\.rawValue).joined(separator: "','"))')"
@@ -27,7 +26,7 @@ public struct JobModelMigration: AsyncSQLMigration {
             .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
             .column("queue_name",      type: .text,                          .notNull)
             .column("job_name",        type: .text,                          .notNull)
-            .column("queued_at",       type: .timestamp,   .notNull)
+            .column("queued_at",       type: .timestamp,                     .notNull)
             .column("delay_until",     type: .timestamp)
             .column("state",           type: .custom(SQLRaw(stateEnumType)), .notNull)
             .column("max_retry_count", type: .int,                           .notNull)

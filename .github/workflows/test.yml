@@ -7,7 +7,101 @@ on:
   push: { branches: [ main ] }
 
 jobs:
-  unit-tests:
-    uses: vapor/ci/.github/workflows/run-unit-tests.yml@main
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  api-breakage:
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    container: swift:noble
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with: { 'fetch-depth': 0 }
+      - name: Run API breakage check
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          swift package diagnose-api-breaking-changes origin/main
+  
+  linux-unit:
+    if: ${{ !(github.event.pull_request.draft || false) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        swift-image:
+          - swift:5.8-jammy
+          - swift:5.9-jammy
+          - swift:5.10-noble
+          - swiftlang/swift:nightly-6.0-jammy
+          - swiftlang/swift:nightly-main-jammy
+        include:
+          - sanitize: '--sanitize=thread'
+          - swift-image: swift:5.8-jammy
+            sanitize: ''
+    runs-on: ubuntu-latest
+    container: ${{ matrix.swift-image }}
+    services:
+      psql: { image: 'postgres:16', env: { POSTGRES_USER: test_username, POSTGRES_PASSWORD: test_password, POSTGRES_DB: test_database, POSTGRES_HOST_AUTH_METHOD: scram-sha-256, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 } }
+      mysql: { image: 'mysql:8', env: { MYSQL_ALLOW_EMPTY_PASSWORD: true, MYSQL_USER: test_username, MYSQL_PASSWORD: test_password, MYSQL_DATABASE: test_database } }
+    timeout-minutes: 60
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Run unit tests
+        env:
+          SANITIZE: ${{ matrix.sanitize }}
+          POSTGRES_HOST: psql
+          MYSQL_HOST: mysql
+        run: SWIFT_DETERMINISTIC_HASHING=1 swift test ${SANITIZE} --enable-code-coverage
+      - name: Upload coverage data
+        uses: vapor/swift-codecov-action@v0.3
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN || '' }}
+
+  macos-unit:
+    if: ${{ !(github.event.pull_request.draft || false) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - macos-version: macos-13
+            xcode-version: '~15.2'
+          - macos-version: macos-14
+            xcode-version: latest-stable
+    runs-on: ${{ matrix.macos-version }}
+    timeout-minutes: 60
+    steps:
+      - name: Select appropriate Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ matrix.xcode-version }}
+      - name: Install and setup Postgres
+        run: |
+          export PATH="$(brew --prefix)/opt/postgresql@16/bin:$PATH" PGDATA=/tmp/vapor-postgres-test
+          (brew upgrade python@3.11 || true) && (brew link --force --overwrite python@3.11 || true)
+          (brew upgrade python@3.12 || true) && (brew link --force --overwrite python@3.12 || true)
+          (brew upgrade || true)
+          brew install --overwrite postgresql@16 && brew link --overwrite --force postgresql@16
+          initdb --locale=C --auth-host scram-sha-256 -U test_username --pwfile=<(echo test_password)
+          pg_ctl start --wait
+          PGPASSWORD=test_password createdb -w -U test_username -O test_username test_database
+          PGPASSWORD=test_password psql -U test_username -w test_database <<<"ALTER SCHEMA public OWNER TO test_username;"
+      - name: Install and setup MySQL
+        run: |
+          set -x
+          brew install mysql && brew services start mysql
+          sleep 5
+          mysql -uroot --batch <<-'SQL'
+              CREATE USER test_username@localhost IDENTIFIED BY 'test_password';
+              CREATE DATABASE test_database; 
+              GRANT ALL PRIVILEGES ON test_database.* TO test_username@localhost;
+          SQL
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Run unit tests
+        env:
+          POSTGRES_HOST: 127.0.0.1
+          MYSQL_HOST: 127.0.0.1
+        run: SWIFT_DETERMINISTIC_HASHING=1 swift test --sanitize=thread --enable-code-coverage
+      - name: Upload coverage data
+        uses: vapor/swift-codecov-action@v0.3
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN || '' }}

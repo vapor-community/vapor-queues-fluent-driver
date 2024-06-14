@@ -3,6 +3,7 @@ import struct Fluent.DatabaseID
 import protocol SQLKit.SQLDatabase
 import protocol Queues.QueuesDriver
 import protocol Queues.Queue
+import protocol Queues.AsyncQueue
 import struct Queues.QueueContext
 import struct Queues.JobIdentifier
 import struct Queues.JobData
@@ -35,13 +36,13 @@ public struct FluentQueuesDriver: QueuesDriver {
     public func shutdown() {}
 }
 
-/*private*/ struct FailingQueue: Queue {
+/*private*/ struct FailingQueue: AsyncQueue {
     let failure: any Error
     let context: QueueContext
 
-    func get(_: JobIdentifier) -> EventLoopFuture<JobData>           { self.eventLoop.future(error: self.failure) }
-    func set(_: JobIdentifier, to: JobData) -> EventLoopFuture<Void> { self.eventLoop.future(error: self.failure) }
-    func clear(_: JobIdentifier) -> EventLoopFuture<Void>            { self.eventLoop.future(error: self.failure) }
-    func push(_: JobIdentifier) -> EventLoopFuture<Void>             { self.eventLoop.future(error: self.failure) }
-    func pop() -> EventLoopFuture<JobIdentifier?>                    { self.eventLoop.future(error: self.failure) }
+    func get(_: JobIdentifier) async throws -> JobData   { throw self.failure }
+    func set(_: JobIdentifier, to: JobData) async throws { throw self.failure }
+    func clear(_: JobIdentifier) async throws            { throw self.failure }
+    func push(_: JobIdentifier) async throws             { throw self.failure }
+    func pop() async throws -> JobIdentifier?            { throw self.failure }
 }
