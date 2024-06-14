@@ -77,6 +77,28 @@ extension SQLExpression {
     static func function(_ name: String, _ args: any SQLExpression...) -> Self where Self == SQLFunction { .init(name, args: args) }
     
     static func group(_ expr: some SQLExpression) -> Self where Self == SQLGroupExpression { .init(expr) }
+
+    static func identifier(_ str: some StringProtocol) -> Self where Self == SQLIdentifier { .init(String(str)) }
+
+    static func column(_ name: some StringProtocol) -> Self where Self == SQLColumn { .init(String(name)) }
+    static func column(_ name: some StringProtocol, table: some StringProtocol) -> Self where Self == SQLColumn { .init(String(name), table: String(table)) }
+    static func column(_ name: some StringProtocol, table: some SQLExpression) -> Self where Self == SQLColumn { .column(.identifier(name), table: table) }
+    static func column(_ name: some SQLExpression, table: some StringProtocol) -> Self where Self == SQLColumn { .column(name, table: .identifier(table)) }
+    static func column(_ name: some SQLExpression, table: (any SQLExpression)? = nil)  -> Self where Self == SQLColumn { .init(name, table: table) }
+
+    static func bind(_ value: some Encodable & Sendable) -> Self where Self == SQLBind { .init(value) }
+
+    static func literal(_ val: some RawRepresentable<String>) -> Self where Self == SQLLiteral { .literal(val.rawValue) }
+    static func literal(_ str: some StringProtocol) -> Self where Self == SQLLiteral { .string(String(str)) }
+    static func literal(_ str: (some StringProtocol)?) -> Self where Self == SQLLiteral {  str.map { .string(String($0)) } ?? .null }
+    static func literal(_ int: some FixedWidthInteger) -> Self where Self == SQLLiteral { .numeric("\(int)") }
+    static func literal(_ int: (some FixedWidthInteger)?) -> Self where Self == SQLLiteral {  int.map { .numeric("\($0)") } ?? .null }
+    static func literal(_ real: some BinaryFloatingPoint) -> Self where Self == SQLLiteral { .numeric("\(real)") }
+    static func literal(_ real: (some BinaryFloatingPoint)?) -> Self where Self == SQLLiteral {  real.map { .numeric("\($0)") } ?? .null }
+    static func literal(_ bool: Bool) -> Self where Self == SQLLiteral { .boolean(bool) }
+    static func literal(_ bool: Bool?) -> Self where Self == SQLLiteral {  bool.map { .boolean($0) } ?? .null }
+
+    static func null() -> Self where Self == SQLLiteral { .null }
 }
 
 /// The following extension allows using `Database's` `transaction(_:)` wrapper with an `SQLDatabase`.
