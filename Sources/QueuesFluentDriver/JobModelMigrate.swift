@@ -1,5 +1,6 @@
 import protocol SQLKit.SQLDatabase
 import struct SQLKit.SQLRaw
+import enum SQLKit.SQLLiteral
 
 public struct JobModelMigration: AsyncSQLMigration {
     /// Public initializer.
@@ -23,16 +24,16 @@ public struct JobModelMigration: AsyncSQLMigration {
         }
 
         try await database.create(table: JobModel.schema)
-            .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
-            .column("queue_name",      type: .text,                          .notNull)
-            .column("job_name",        type: .text,                          .notNull)
-            .column("queued_at",       type: .timestamp,                     .notNull)
-            .column("delay_until",     type: .timestamp)
-            .column("state",           type: .custom(SQLRaw(stateEnumType)), .notNull)
-            .column("max_retry_count", type: .int,                           .notNull)
-            .column("attempts",        type: .int,                           .notNull)
-            .column("payload",         type: .blob,                          .notNull)
-            .column("updated_at",      type: .timestamp)
+            .column("id",              type: .text,                             .primaryKey(autoIncrement: false))
+            .column("queue_name",      type: .text,                             .notNull)
+            .column("job_name",        type: .text,                             .notNull)
+            .column("queued_at",       type: .timestamp,                        .notNull)
+            .column("delay_until",     type: .custom(SQLRaw("TIMESTAMP NULL")), .default(SQLLiteral.null))
+            .column("state",           type: .custom(SQLRaw(stateEnumType)),    .notNull)
+            .column("max_retry_count", type: .int,                              .notNull)
+            .column("attempts",        type: .int,                              .notNull)
+            .column("payload",         type: .blob,                             .notNull)
+            .column("updated_at",      type: .custom(SQLRaw("TIMESTAMP NULL")), .default(SQLLiteral.null))
             .run()
         try await database.create(index: "i_\(JobModel.schema)_state_queue_delayUntil")
             .on(JobModel.schema)
