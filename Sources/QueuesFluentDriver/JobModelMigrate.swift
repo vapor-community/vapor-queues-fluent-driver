@@ -1,4 +1,7 @@
 import protocol SQLKit.SQLDatabase
+import enum SQLKit.SQLColumnConstraintAlgorithm
+import enum SQLKit.SQLDataType
+import enum SQLKit.SQLLiteral
 import struct SQLKit.SQLRaw
 
 public struct JobModelMigration: AsyncSQLMigration {
@@ -22,17 +25,31 @@ public struct JobModelMigration: AsyncSQLMigration {
             stateEnumType = "varchar(16)"
         }
 
+        /// This whole pile of nonsense is only here because of
+        /// https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_explicit_defaults_for_timestamp
+        /// In short, I'm making things work in MySQL 5.7 as a favor to a colleague.
+        let manualTimestampType: SQLDataType, autoTimestampConstraints: [SQLColumnConstraintAlgorithm]
+
+        switch database.dialect.name {
+        case "mysql":
+            manualTimestampType = .custom(SQLRaw("DATETIME"))
+            autoTimestampConstraints = [.custom(SQLLiteral.null), .default(SQLLiteral.null)]
+        default:
+            manualTimestampType = .timestamp
+            autoTimestampConstraints = []
+        }
+
         try await database.create(table: JobModel.schema)
             .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
             .column("queue_name",      type: .text,                          .notNull)
             .column("job_name",        type: .text,                          .notNull)
-            .column("queued_at",       type: .timestamp,                     .notNull)
-            .column("delay_until",     type: .timestamp)
+            .column("queued_at",       type: manualTimestampType,            .notNull)
+            .column("delay_until",     type: manualTimestampType,            .default(SQLLiteral.null))
             .column("state",           type: .custom(SQLRaw(stateEnumType)), .notNull)
             .column("max_retry_count", type: .int,                           .notNull)
             .column("attempts",        type: .int,                           .notNull)
             .column("payload",         type: .blob,                          .notNull)
-            .column("updated_at",      type: .timestamp)
+            .column("updated_at",      type: .timestamp,                     autoTimestampConstraints)
             .run()
         try await database.create(index: "i_\(JobModel.schema)_state_queue_delayUntil")
             .on(JobModel.schema)
