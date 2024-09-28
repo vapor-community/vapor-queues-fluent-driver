@@ -27,15 +27,10 @@ jobs:
       fail-fast: false
       matrix:
         swift-image:
-          - swift:5.8-jammy
           - swift:5.9-jammy
           - swift:5.10-noble
-          - swiftlang/swift:nightly-6.0-jammy
+          - swift:6.0-noble
           - swiftlang/swift:nightly-main-jammy
-        include:
-          - sanitize: '--sanitize=thread'
-          - swift-image: swift:5.8-jammy
-            sanitize: ''
     runs-on: ubuntu-latest
     container: ${{ matrix.swift-image }}
     services:
@@ -50,7 +45,7 @@ jobs:
           SANITIZE: ${{ matrix.sanitize }}
           POSTGRES_HOST: psql
           MYSQL_HOST: mysql
-        run: SWIFT_DETERMINISTIC_HASHING=1 swift test ${SANITIZE} --enable-code-coverage
+        run: SWIFT_DETERMINISTIC_HASHING=1 swift test --sanitize=thread --enable-code-coverage
       - name: Upload coverage data
         uses: vapor/swift-codecov-action@v0.3
         with:
