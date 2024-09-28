@@ -28,6 +28,7 @@ public struct JobModelMigration: AsyncSQLMigration {
             try await database.create(enum: stateEnumType)
                 .value("pending")
                 .value("processing")
+                .value("completed")
                 .run()
         case .inline:
             stateEnumType = "enum('\(StoredJobState.allCases.map(\.rawValue).joined(separator: "','"))')"
