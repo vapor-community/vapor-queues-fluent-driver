@@ -17,6 +17,10 @@ import FluentMySQLDriver
 #endif
 import NIOSSL
 
+extension DatabaseID {
+    static var mysql2: Self { .init(string: "mysql2") }
+}
+
 final class QueuesFluentDriverTests: XCTestCase {
     var app: Application!
     var dbid: DatabaseID!
@@ -48,18 +52,28 @@ final class QueuesFluentDriverTests: XCTestCase {
             database: env("MYSQL_NAME")     ?? env("DATABASE_NAME")     ?? "test_database",
             tlsConfiguration: config
         )), as: .mysql)
+        if env("MYSQL_B") != nil {
+            app.databases.use(DatabaseConfigurationFactory.mysql(configuration: .init(
+                hostname: env("MYSQL_HOST_B")     ?? env("DATABASE_HOST")     ?? "localhost",
+                port:     (env("MYSQL_PORT_B")    ?? env("DATABASE_PORT")).flatMap(Int.init(_:)) ?? MySQLConfiguration.ianaPortNumber,
+                username: env("MYSQL_USERNAME_B") ?? env("DATABASE_USERNAME") ?? "test_username",
+                password: env("MYSQL_PASSWORD_B") ?? env("DATABASE_PASSWORD") ?? "test_password",
+                database: env("MYSQL_NAME_B")     ?? env("DATABASE_NAME")     ?? "test_database",
+                tlsConfiguration: config
+            )), as: .mysql2)
+        }
         #endif
     }
 
     private func withEachDatabase(preserveJobs: Bool = false, tableName: String = "_jobs_meta", _ closure: () async throws -> Void) async throws {
-        func run(_ dbid: DatabaseID) async throws {
+        func run(_ dbid: DatabaseID, defaultSpace: String? = nil) async throws {
             self.dbid = dbid
             self.app = try await Application.make(.testing)
             self.app.logger[metadataKey: "test-dbid"] = "\(dbid.string)"
 
             try self.useDbs(self.app)
-            self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: nil), to: self.dbid)
-            self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: nil))
+            self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: defaultSpace), to: self.dbid)
+            self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: defaultSpace))
 
             try await self.app.autoMigrate()
 
@@ -81,11 +95,14 @@ final class QueuesFluentDriverTests: XCTestCase {
         #endif
 
         #if canImport(FluentPostgresDriver)
-        try await run(.psql)
+        try await run(.psql, defaultSpace: "public")
         #endif
 
         #if canImport(FluentMySQLDriver)
-        try await run(.mysql)
+        try await run(.mysql, defaultSpace: env("MYSQL_NAME") ?? env("DATABASE_NAME") ?? "test_database")
+        if env("MYSQL_B") != nil {
+            try await run(.mysql2, defaultSpace: env("MYSQL_NAME_B") ?? env("DATABASE_NAME") ?? "test_database")
+        }
         #endif
     }
 
@@ -217,6 +234,22 @@ final class QueuesFluentDriverTests: XCTestCase {
         self.app = nil
     }
 
+    func testCoverageForJobModel() {
+        let date = Date()
+        let model = JobModel(id: .init(string: "test"), queue: .init(string: "test"), jobData: .init(payload: [], maxRetryCount: 0, jobName: "", delayUntil: nil, queuedAt: date))
+
+        XCTAssertEqual(model.id, "test")
+        XCTAssertEqual(model.queueName, "test")
+        XCTAssertEqual(model.jobName, "")
+        XCTAssertEqual(model.queuedAt, date)
+        XCTAssertNil(model.delayUntil)
+        XCTAssertEqual(model.state, .pending)
+        XCTAssertEqual(model.maxRetryCount, 0)
+        XCTAssertEqual(model.attempts, 0)
+        XCTAssertEqual(model.payload, Data())
+        XCTAssertNotNil(model.updatedAt)
+    }
+
     func testSQLKitUtilities() async throws { try await self.withEachDatabase {
         func serialized(_ expr: some SQLExpression) -> String {
             var serializer = SQLSerializer(database: self.app.db(self.dbid) as! any SQLDatabase)
@@ -240,6 +273,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         XCTAssertEqual(serialized(.literal(Bool?(true))), "\(serialized(SQLLiteral.boolean(true)))")
         XCTAssertEqual(serialized(.literal(Bool?.none)), "NULL")
         XCTAssertEqual(serialized(.null()), "NULL")
+        XCTAssertEqual(serialized(SQLLockingClauseWithSkipLocked.shareSkippingLocked), serialized(SQLLockingClause.share) != "" ? "\(serialized(SQLLockingClause.share)) SKIP LOCKED" : "")
 
         await XCTAssertNotNilAsync(try await (self.app.db(self.dbid) as! any SQLDatabase).transaction { $0.eventLoop.makeSucceededFuture(()) }.get())
     } }
