@@ -14,7 +14,7 @@ public struct JobModelMigration: AsyncSQLMigration {
         jobsTableName: String = "_jobs_meta",
         jobsTableSpace: String? = nil
     ) {
-        self.jobsTableString = "\(jobsTableSpace.map { "\($0)_" } ?? ""))\(jobsTableName)"
+        self.jobsTableString = "\(jobsTableSpace.map { "\($0)_" } ?? "")\(jobsTableName)"
         self.jobsTable = .init(jobsTableName, space: jobsTableSpace)
     }
 
