@@ -25,7 +25,7 @@ final class QueuesFluentDriverTests: XCTestCase {
     var app: Application!
     var dbid: DatabaseID!
 
-    private func useDbs(_ app: Application) throws {
+    private func useDBs(_ app: Application) throws {
         #if canImport(FluentSQLiteDriver)
         app.databases.use(.sqlite(.memory), as: .sqlite)
         #endif
@@ -71,7 +71,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             self.app = try await Application.make(.testing)
             self.app.logger[metadataKey: "test-dbid"] = "\(dbid.string)"
 
-            try self.useDbs(self.app)
+            try self.useDBs(self.app)
             self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: defaultSpace), to: self.dbid)
             self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: defaultSpace))
 
@@ -125,11 +125,11 @@ final class QueuesFluentDriverTests: XCTestCase {
     } }
 
     func testFailedJobLoss() async throws { try await self.withEachDatabase {
-        let jobId = JobIdentifier()
+        let jobID = JobIdentifier()
 
         self.app.queues.add(FailingJob())
         self.app.get("test") { req in
-            try await req.queue.dispatch(FailingJob.self, ["foo": "bar"], id: jobId)
+            try await req.queue.dispatch(FailingJob.self, ["foo": "bar"], id: jobID)
             return HTTPStatus.ok
         }
         try await self.app.testable().test(.GET, "test") { res async in
@@ -142,17 +142,17 @@ final class QueuesFluentDriverTests: XCTestCase {
             try await (self.app.db(self.dbid) as! any SQLDatabase).select()
                 .columns("*")
                 .from("_jobs_meta")
-                .where("id", .equal, jobId)
+                .where("id", .equal, jobID)
                 .first()
         )
     } }
 
     func testDelayedJobIsRemovedFromProcessingQueue() async throws { try await self.withEachDatabase {
-        let jobId = JobIdentifier()
+        let jobID = JobIdentifier()
 
         self.app.queues.add(DelayedJob())
         self.app.get("delay-job") { req in
-            try await req.queue.dispatch(DelayedJob.self, .init(name: "vapor"), delayUntil: .init(timeIntervalSinceNow: 3600.0), id: jobId)
+            try await req.queue.dispatch(DelayedJob.self, .init(name: "vapor"), delayUntil: .init(timeIntervalSinceNow: 3600.0), id: jobID)
             return HTTPStatus.ok
         }
         try await self.app.testable().test(.GET, "delay-job") { res async in
@@ -163,7 +163,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             try await (self.app.db(self.dbid) as! any SQLDatabase).select()
                 .columns("*")
                 .from("_jobs_meta")
-                .where("id", .equal, jobId)
+                .where("id", .equal, jobID)
                 .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)?.state,
             .pending
         )

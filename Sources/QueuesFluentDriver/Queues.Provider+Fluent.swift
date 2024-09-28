@@ -25,14 +25,14 @@ extension Application.Queues.Provider {
     ///     indicating the default space. Most users will not need this parameter.
     /// - Returns: An appropriately configured provider for `Application.Queues.use(_:)`.
     public static func fluent(
-        _ databaseId: DatabaseID? = nil,
+        _ databaseID: DatabaseID? = nil,
         preservesCompletedJobs: Bool = false,
         jobsTableName: String = "_jobs_meta",
         jobsTableSpace: String? = nil
     ) -> Self {
         .init {
             $0.queues.use(custom: FluentQueuesDriver(
-                on: databaseId,
+                on: databaseID,
                 preserveCompletedJobs: preservesCompletedJobs,
                 jobsTableName: jobsTableName,
                 jobsTableSpace: jobsTableSpace
