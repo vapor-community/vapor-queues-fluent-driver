@@ -67,6 +67,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             catch {
                 try? await self.app.autoRevert()
                 try? await self.app.asyncShutdown()
+                self.app = nil
                 throw error
             }
 
