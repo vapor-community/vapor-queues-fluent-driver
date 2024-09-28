@@ -51,15 +51,15 @@ final class QueuesFluentDriverTests: XCTestCase {
         #endif
     }
 
-    private func withEachDatabase(_ closure: () async throws -> Void) async throws {
+    private func withEachDatabase(preserveJobs: Bool = false, tableName: String = "_jobs_meta", _ closure: () async throws -> Void) async throws {
         func run(_ dbid: DatabaseID) async throws {
             self.dbid = dbid
             self.app = try await Application.make(.testing)
             self.app.logger[metadataKey: "test-dbid"] = "\(dbid.string)"
 
             try self.useDbs(self.app)
-            self.app.migrations.add(JobModelMigration(), to: self.dbid)
-            self.app.queues.use(.fluent(self.dbid))
+            self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: nil), to: self.dbid)
+            self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: nil))
 
             try await self.app.autoMigrate()
 
@@ -123,7 +123,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         await XCTAssertNotNilAsync(
             try await (self.app.db(self.dbid) as! any SQLDatabase).select()
                 .columns("*")
-                .from(JobModel.schema)
+                .from("_jobs_meta")
                 .where("id", .equal, jobId)
                 .first()
         )
@@ -144,10 +144,60 @@ final class QueuesFluentDriverTests: XCTestCase {
         await XCTAssertEqualAsync(
             try await (self.app.db(self.dbid) as! any SQLDatabase).select()
                 .columns("*")
-                .from(JobModel.schema)
+                .from("_jobs_meta")
                 .where("id", .equal, jobId)
                 .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)?.state,
             .pending
+        )
+    } }
+
+    func testCustomTableNameAndJobDeletionByDefault() async throws { try await self.withEachDatabase(tableName: "_jobs_custom") {
+        let email = Email()
+
+        self.app.queues.add(email)
+        self.app.get("send-email") { req in
+            try await req.queue.dispatch(Email.self, .init(to: "gwynne@vapor.codes"))
+            return HTTPStatus.ok
+        }
+
+        try await self.app.testable().test(.GET, "send-email") { res async in
+            XCTAssertEqual(res.status, .ok)
+        }
+
+        await XCTAssertEqualAsync(await email.sent, [])
+        try await self.app.queues.queue.worker.run().get()
+        await XCTAssertEqualAsync(await email.sent, [.init(to: "gwynne@vapor.codes")])
+        await XCTAssertEqualAsync(
+            try await (self.app.db(self.dbid) as! any SQLDatabase).select()
+                .column(SQLFunction("count", args: SQLIdentifier("id")), as: "count")
+                .from("_jobs_custom")
+                .first(decodingColumn: "count", as: Int.self),
+            0
+        )
+    } }
+
+    func testJobPreservation() async throws { try await self.withEachDatabase(preserveJobs: true) {
+        let email = Email()
+
+        self.app.queues.add(email)
+        self.app.get("send-email") { req in
+            try await req.queue.dispatch(Email.self, .init(to: "gwynne@vapor.codes"))
+            return HTTPStatus.ok
+        }
+
+        try await self.app.testable().test(.GET, "send-email") { res async in
+            XCTAssertEqual(res.status, .ok)
+        }
+
+        await XCTAssertEqualAsync(await email.sent, [])
+        try await self.app.queues.queue.worker.run().get()
+        await XCTAssertEqualAsync(await email.sent, [.init(to: "gwynne@vapor.codes")])
+        await XCTAssertEqualAsync(
+            try await (self.app.db(self.dbid) as! any SQLDatabase).select()
+                .column(SQLFunction("count", args: SQLIdentifier("id")), as: "count")
+                .from("_jobs_meta")
+                .first(decodingColumn: "count", as: Int.self),
+            1
         )
     } }
 
@@ -260,6 +310,18 @@ func XCTAssertThrowsErrorAsync<T>(
         XCTAssertThrowsError({}(), message(), file: file, line: line, callback)
     } catch {
         XCTAssertThrowsError(try { throw error }(), message(), file: file, line: line, callback)
+    }
+}
+
+func XCTAssertNoThrowAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath, line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+    } catch {
+        XCTAssertNoThrow(try { throw error }(), message(), file: file, line: line)
     }
 }
 

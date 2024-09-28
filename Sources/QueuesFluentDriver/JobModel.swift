@@ -11,13 +11,15 @@ enum StoredJobState: String, Codable, CaseIterable {
     
     /// Job is in progress.
     case processing
+
+    /// Job is completed.
+    ///
+    /// > Note: This state is only used if the driver is configured to preserve completed jobs.
+    case completed
 }
 
 /// Encapsulates a job's metadata and `JobData`.
 struct JobModel: Codable, Sendable {
-    /// The name of the model's table.
-    static let schema = "_jobs_meta"
-    
     /// The job identifier. Corresponds directly to a `JobIdentifier`.
     let id: String?
     

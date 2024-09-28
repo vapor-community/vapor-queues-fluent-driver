@@ -2,19 +2,29 @@ import protocol SQLKit.SQLDatabase
 import enum SQLKit.SQLColumnConstraintAlgorithm
 import enum SQLKit.SQLDataType
 import enum SQLKit.SQLLiteral
+import struct SQLKit.SQLQualifiedTable
 import struct SQLKit.SQLRaw
 
 public struct JobModelMigration: AsyncSQLMigration {
+    private let jobsTableString: String
+    private let jobsTable: SQLQualifiedTable
+
     /// Public initializer.
-    public init() {}
-    
+    public init(
+        jobsTableName: String = "_jobs_meta",
+        jobsTableSpace: String? = nil
+    ) {
+        self.jobsTableString = "\(jobsTableSpace.map { "\($0)_" } ?? ""))\(jobsTableName)"
+        self.jobsTable = .init(jobsTableName, space: jobsTableSpace)
+    }
+
     // See `AsyncSQLMigration.prepare(on:)`.
     public func prepare(on database: any SQLDatabase) async throws {
         let stateEnumType: String
         
         switch database.dialect.enumSyntax {
         case .typeName:
-            stateEnumType = "\(JobModel.schema)_storedjobstatus"
+            stateEnumType = "\(self.jobsTableString)_storedjobstatus"
             try await database.create(enum: stateEnumType)
                 .value("pending")
                 .value("processing")
@@ -39,7 +49,7 @@ public struct JobModelMigration: AsyncSQLMigration {
             autoTimestampConstraints = []
         }
 
-        try await database.create(table: JobModel.schema)
+        try await database.create(table: self.jobsTable)
             .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
             .column("queue_name",      type: .text,                          .notNull)
             .column("job_name",        type: .text,                          .notNull)
@@ -51,8 +61,8 @@ public struct JobModelMigration: AsyncSQLMigration {
             .column("payload",         type: .blob,                          .notNull)
             .column("updated_at",      type: .timestamp,                     autoTimestampConstraints)
             .run()
-        try await database.create(index: "i_\(JobModel.schema)_state_queue_delayUntil")
-            .on(JobModel.schema)
+        try await database.create(index: "i_\(self.jobsTableString)_state_queue_delayUntil")
+            .on(self.jobsTable)
             .column("state")
             .column("queue_name")
             .column("delay_until")
@@ -61,10 +71,10 @@ public struct JobModelMigration: AsyncSQLMigration {
     
     // See `AsyncSQLMigration.revert(on:)`.
     public func revert(on database: any SQLDatabase) async throws {
-        try await database.drop(table: JobModel.schema).run()
+        try await database.drop(table: self.jobsTable).run()
         switch database.dialect.enumSyntax {
         case .typeName:
-            try await database.drop(enum: "\(JobModel.schema)_storedjobstatus").run()
+            try await database.drop(enum: "\(self.jobsTableString)_storedjobstatus").run()
         default:
             break
         }

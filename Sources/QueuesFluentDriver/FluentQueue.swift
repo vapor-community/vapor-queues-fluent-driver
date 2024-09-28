@@ -9,14 +9,16 @@ public struct FluentQueue: AsyncQueue, Sendable {
     public let context: QueueContext
 
     let sqlDb: any SQLDatabase
-    
+    let preservesCompletedJobs: Bool
+    let jobsTable: SQLQualifiedTable
+
     let _sqlLockingClause: NIOLockedValueBox<(any SQLExpression)?> = .init(nil) // needs a lock for the queue to be `Sendable`
 
     // See `Queue.get(_:)`.
     public func get(_ id: JobIdentifier) async throws -> JobData {
         guard let job = try await self.sqlDb.select()
             .columns("payload", "max_retry_count", "queue_name", "state", "job_name", "delay_until", "queued_at", "attempts", "updated_at")
-            .from(JobModel.schema)
+            .from(self.jobsTable)
             .where("id", .equal, id)
             .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)
         else {
@@ -28,7 +30,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
     
     // See `Queue.set(_:to:)`.
     public func set(_ id: JobIdentifier, to jobStorage: JobData) async throws {
-        try await self.sqlDb.insert(into: JobModel.schema)
+        try await self.sqlDb.insert(into: self.jobsTable)
             .columns("id", "queue_name", "job_name", "queued_at", "delay_until", "state", "max_retry_count", "attempts", "payload", "updated_at")
             .values(
                 .bind(id),
@@ -48,14 +50,21 @@ public struct FluentQueue: AsyncQueue, Sendable {
     
     // See `Queue.clear(_:)`.
     public func clear(_ id: JobIdentifier) async throws {
-        try await self.sqlDb.delete(from: JobModel.schema)
-            .where("id", .equal, id)
-            .run()
+        if self.preservesCompletedJobs {
+            try await self.sqlDb.update(self.jobsTable)
+                .set("state", to: .literal(StoredJobState.completed))
+                .where("id", .equal, id)
+                .run()
+        } else {
+            try await self.sqlDb.delete(from: self.jobsTable)
+                .where("id", .equal, id)
+                .run()
+        }
     }
     
     // See `Queue.push(_:)`.
     public func push(_ id: JobIdentifier) async throws {
-        try await self.sqlDb.update(JobModel.schema)
+        try await self.sqlDb.update(self.jobsTable)
             .set("state", to: .literal(StoredJobState.pending))
             .set("updated_at", to: .now())
             .where("id", .equal, id)
@@ -87,7 +96,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
 
         let select = SQLSubquery.select { $0
             .column("id")
-            .from(JobModel.schema)
+            .from(self.jobsTable)
             .where("state", .equal, .literal(StoredJobState.pending))
             .where("queue_name", .equal, self.queueName)
             .where(.dateValue(.function("coalesce", .column("delay_until"), SQLNow())), .lessThanOrEqual, .now())
@@ -98,7 +107,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
         }
 
         if self.sqlDb.dialect.supportsReturning {
-            return try await self.sqlDb.update(JobModel.schema)
+            return try await self.sqlDb.update(self.jobsTable)
                 .set("state", to: .literal(StoredJobState.processing))
                 .set("updated_at", to: .now())
                 .where("id", .equal, select)
@@ -114,7 +123,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 }
 
                 try await transaction
-                    .update(JobModel.schema)
+                    .update(self.jobsTable)
                     .set("state", to: .literal(StoredJobState.processing))
                     .set("updated_at", to: .now())
                     .where("id", .equal, id)

@@ -10,9 +10,20 @@ import struct Queues.JobData
 
 public struct FluentQueuesDriver: QueuesDriver {
     let databaseId: DatabaseID?
+    let preservesCompletedJobs: Bool
+    let jobsTableName: String
+    let jobsTableSpace: String?
 
-    init(on databaseId: DatabaseID? = nil) {
+    init(
+        on databaseId: DatabaseID? = nil,
+        preserveCompletedJobs: Bool = false,
+        jobsTableName: String = "_jobs_meta",
+        jobsTableSpace: String? = nil
+    ) {
         self.databaseId = databaseId
+        self.preservesCompletedJobs = preserveCompletedJobs
+        self.jobsTableName = jobsTableName
+        self.jobsTableSpace = jobsTableSpace
     }
 
     public func makeQueue(with context: QueueContext) -> any Queue {
@@ -30,7 +41,12 @@ public struct FluentQueuesDriver: QueuesDriver {
             return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
         }
 
-        return FluentQueue(context: context, sqlDb: sqlDb)
+        return FluentQueue(
+            context: context,
+            sqlDb: sqlDb,
+            preservesCompletedJobs: self.preservesCompletedJobs,
+            jobsTable: .init(self.jobsTableName, space: self.jobsTableSpace)
+        )
     }
     
     public func shutdown() {}
