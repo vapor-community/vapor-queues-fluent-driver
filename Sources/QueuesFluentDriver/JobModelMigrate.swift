@@ -1,9 +1,4 @@
-import protocol SQLKit.SQLDatabase
-import enum SQLKit.SQLColumnConstraintAlgorithm
-import enum SQLKit.SQLDataType
-import enum SQLKit.SQLLiteral
-import struct SQLKit.SQLQualifiedTable
-import struct SQLKit.SQLRaw
+import SQLKit
 
 public struct JobModelMigration: AsyncSQLMigration {
     private let jobsTableString: String
@@ -20,20 +15,20 @@ public struct JobModelMigration: AsyncSQLMigration {
 
     // See `AsyncSQLMigration.prepare(on:)`.
     public func prepare(on database: any SQLDatabase) async throws {
-        let stateEnumType: String
-        
+        let stateEnumType: any SQLExpression
+
         switch database.dialect.enumSyntax {
         case .typeName:
-            stateEnumType = "\(self.jobsTableString)_storedjobstatus"
+            stateEnumType = .identifier("\(self.jobsTableString)_storedjobstatus")
             var builder = database.create(enum: stateEnumType)
-            for `case` in StoredJobState.allCases {
-                builder = builder.value(`case`.rawValue)
-            }
+            builder = StoredJobState.allCases.reduce(builder, { $0.value($1.rawValue) })
             try await builder.run()
         case .inline:
-            stateEnumType = "enum('\(StoredJobState.allCases.map(\.rawValue).joined(separator: "','"))')"
+             // This is technically a misuse of SQLFunction, but it produces the correct syntax
+            stateEnumType = .function("enum", StoredJobState.allCases.map { .literal($0.rawValue) })
         default:
-            stateEnumType = "varchar(16)"
+            // This is technically a misuse of SQLFunction, but it produces the correct syntax
+            stateEnumType = .function("varchar", .literal(16))
         }
 
         /// This whole pile of nonsense is only here because of
@@ -51,16 +46,16 @@ public struct JobModelMigration: AsyncSQLMigration {
         }
 
         try await database.create(table: self.jobsTable)
-            .column("id",              type: .text,                          .primaryKey(autoIncrement: false))
-            .column("queue_name",      type: .text,                          .notNull)
-            .column("job_name",        type: .text,                          .notNull)
-            .column("queued_at",       type: manualTimestampType,            .notNull)
-            .column("delay_until",     type: manualTimestampType,            .default(SQLLiteral.null))
-            .column("state",           type: .custom(SQLRaw(stateEnumType)), .notNull)
-            .column("max_retry_count", type: .int,                           .notNull)
-            .column("attempts",        type: .int,                           .notNull)
-            .column("payload",         type: .blob,                          .notNull)
-            .column("updated_at",      type: .timestamp,                     autoTimestampConstraints)
+            .column("id",              type: .text,                  .primaryKey(autoIncrement: false))
+            .column("queue_name",      type: .text,                  .notNull)
+            .column("job_name",        type: .text,                  .notNull)
+            .column("queued_at",       type: manualTimestampType,    .notNull)
+            .column("delay_until",     type: manualTimestampType,    .default(SQLLiteral.null))
+            .column("state",           type: .custom(stateEnumType), .notNull)
+            .column("max_retry_count", type: .int,                   .notNull)
+            .column("attempts",        type: .int,                   .notNull)
+            .column("payload",         type: .blob,                  .notNull)
+            .column("updated_at",      type: .timestamp,             autoTimestampConstraints)
             .run()
         try await database.create(index: "i_\(self.jobsTableString)_state_queue_delayUntil")
             .on(self.jobsTable)
