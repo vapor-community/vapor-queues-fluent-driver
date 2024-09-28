@@ -25,11 +25,11 @@ public struct JobModelMigration: AsyncSQLMigration {
         switch database.dialect.enumSyntax {
         case .typeName:
             stateEnumType = "\(self.jobsTableString)_storedjobstatus"
-            try await database.create(enum: stateEnumType)
-                .value("pending")
-                .value("processing")
-                .value("completed")
-                .run()
+            var builder = database.create(enum: stateEnumType)
+            for `case` in StoredJobState.allCases {
+                builder = builder.value(`case`.rawValue)
+            }
+            try await builder.run()
         case .inline:
             stateEnumType = "enum('\(StoredJobState.allCases.map(\.rawValue).joined(separator: "','"))')"
         default:
