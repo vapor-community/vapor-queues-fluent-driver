@@ -1,4 +1,4 @@
-// swift-tools-version:5.8
+// swift-tools-version:5.9
 import PackageDescription
 import class Foundation.ProcessInfo
 
@@ -6,6 +6,9 @@ let package = Package(
     name: "QueuesFluentDriver",
     platforms: [
         .macOS(.v10_15),
+        .iOS(.v13),
+        .watchOS(.v6),
+        .tvOS(.v13),
     ],
     products: [
         .library(name: "QueuesFluentDriver", targets: ["QueuesFluentDriver"]),
@@ -53,6 +56,8 @@ let package = Package(
 
 var swiftSettings: [SwiftSetting] { [
     .enableUpcomingFeature("ForwardTrailingClosures"),
+    .enableUpcomingFeature("ExistentialAny"),
     .enableUpcomingFeature("ConciseMagicFile"),
     .enableUpcomingFeature("DisableOutwardActorInference"),
+    .enableExperimentalFeature("StrictConcurrency=complete"),
 ] }

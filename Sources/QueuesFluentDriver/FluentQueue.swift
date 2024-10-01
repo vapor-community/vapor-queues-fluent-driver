@@ -8,15 +8,17 @@ public struct FluentQueue: AsyncQueue, Sendable {
     // See `Queue.context`.
     public let context: QueueContext
 
-    let sqlDb: any SQLDatabase
-    
+    let sqlDB: any SQLDatabase
+    let preservesCompletedJobs: Bool
+    let jobsTable: SQLQualifiedTable
+
     let _sqlLockingClause: NIOLockedValueBox<(any SQLExpression)?> = .init(nil) // needs a lock for the queue to be `Sendable`
 
     // See `Queue.get(_:)`.
     public func get(_ id: JobIdentifier) async throws -> JobData {
-        guard let job = try await self.sqlDb.select()
+        guard let job = try await self.sqlDB.select()
             .columns("payload", "max_retry_count", "queue_name", "state", "job_name", "delay_until", "queued_at", "attempts", "updated_at")
-            .from(JobModel.schema)
+            .from(self.jobsTable)
             .where("id", .equal, id)
             .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)
         else {
@@ -28,7 +30,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
     
     // See `Queue.set(_:to:)`.
     public func set(_ id: JobIdentifier, to jobStorage: JobData) async throws {
-        try await self.sqlDb.insert(into: JobModel.schema)
+        try await self.sqlDB.insert(into: self.jobsTable)
             .columns("id", "queue_name", "job_name", "queued_at", "delay_until", "state", "max_retry_count", "attempts", "payload", "updated_at")
             .values(
                 .bind(id),
@@ -48,14 +50,21 @@ public struct FluentQueue: AsyncQueue, Sendable {
     
     // See `Queue.clear(_:)`.
     public func clear(_ id: JobIdentifier) async throws {
-        try await self.sqlDb.delete(from: JobModel.schema)
-            .where("id", .equal, id)
-            .run()
+        if self.preservesCompletedJobs {
+            try await self.sqlDB.update(self.jobsTable)
+                .set("state", to: .literal(StoredJobState.completed))
+                .where("id", .equal, id)
+                .run()
+        } else {
+            try await self.sqlDB.delete(from: self.jobsTable)
+                .where("id", .equal, id)
+                .run()
+        }
     }
     
     // See `Queue.push(_:)`.
     public func push(_ id: JobIdentifier) async throws {
-        try await self.sqlDb.update(JobModel.schema)
+        try await self.sqlDB.update(self.jobsTable)
             .set("state", to: .literal(StoredJobState.pending))
             .set("updated_at", to: .now())
             .where("id", .equal, id)
@@ -69,9 +78,9 @@ public struct FluentQueue: AsyncQueue, Sendable {
         // is purely synchronous, and `SQLDatabase.version` is not implemented in MySQLKit at the time
         // of this writing.
         if self._sqlLockingClause.withLockedValue({ $0 }) == nil {
-            switch self.sqlDb.dialect.name {
+            switch self.sqlDB.dialect.name {
             case "mysql":
-                let version = try await self.sqlDb.select()
+                let version = try await self.sqlDB.select()
                     .column(.function("version"), as: "version")
                     .first(decodingColumn: "version", as: String.self)! // always returns one row
                 // This is a really lazy check and it knows it; we know MySQLNIO doesn't support versions older than 5.x.
@@ -87,7 +96,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
 
         let select = SQLSubquery.select { $0
             .column("id")
-            .from(JobModel.schema)
+            .from(self.jobsTable)
             .where("state", .equal, .literal(StoredJobState.pending))
             .where("queue_name", .equal, self.queueName)
             .where(.dateValue(.function("coalesce", .column("delay_until"), SQLNow())), .lessThanOrEqual, .now())
@@ -97,8 +106,8 @@ public struct FluentQueue: AsyncQueue, Sendable {
             .lockingClause(self._sqlLockingClause.withLockedValue { $0! }) // we've always set it by the time we get here
         }
 
-        if self.sqlDb.dialect.supportsReturning {
-            return try await self.sqlDb.update(JobModel.schema)
+        if self.sqlDB.dialect.supportsReturning {
+            return try await self.sqlDB.update(self.jobsTable)
                 .set("state", to: .literal(StoredJobState.processing))
                 .set("updated_at", to: .now())
                 .where("id", .equal, select)
@@ -106,7 +115,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 .first(decodingColumn: "id", as: String.self)
                 .map(JobIdentifier.init(string:))
         } else {
-            return try await self.sqlDb.transaction { transaction in
+            return try await self.sqlDB.transaction { transaction in
                 guard let id = try await transaction.raw("\(select)") // using raw() to make sure we run on the transaction connection
                     .first(decodingColumn: "id", as: String.self)
                 else {
@@ -114,7 +123,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 }
 
                 try await transaction
-                    .update(JobModel.schema)
+                    .update(self.jobsTable)
                     .set("state", to: .literal(StoredJobState.processing))
                     .set("updated_at", to: .now())
                     .where("id", .equal, id)

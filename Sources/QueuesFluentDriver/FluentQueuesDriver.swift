@@ -9,10 +9,21 @@ import struct Queues.JobIdentifier
 import struct Queues.JobData
 
 public struct FluentQueuesDriver: QueuesDriver {
-    let databaseId: DatabaseID?
+    let databaseID: DatabaseID?
+    let preservesCompletedJobs: Bool
+    let jobsTableName: String
+    let jobsTableSpace: String?
 
-    init(on databaseId: DatabaseID? = nil) {
-        self.databaseId = databaseId
+    init(
+        on databaseID: DatabaseID? = nil,
+        preserveCompletedJobs: Bool = false,
+        jobsTableName: String = "_jobs_meta",
+        jobsTableSpace: String? = nil
+    ) {
+        self.databaseID = databaseID
+        self.preservesCompletedJobs = preserveCompletedJobs
+        self.jobsTableName = jobsTableName
+        self.jobsTableSpace = jobsTableSpace
     }
 
     public func makeQueue(with context: QueueContext) -> any Queue {
@@ -21,16 +32,21 @@ public struct FluentQueuesDriver: QueuesDriver {
         ///
         /// `Fluent.Databases.database(_:logger:on:)` never returns nil; its optionality is an API mistake.
         /// If a nonexistent `DatabaseID` is requested, it triggers a `fatalError()`.
-        let baseDb = context
+        let baseDB = context
             .application
             .databases
-            .database(self.databaseId, logger: context.logger, on: context.eventLoop)!
-        
-        guard let sqlDb = baseDb as? any SQLDatabase else {
+            .database(self.databaseID, logger: context.logger, on: context.eventLoop)!
+
+        guard let sqlDB = baseDB as? any SQLDatabase else {
             return FailingQueue(failure: QueuesFluentError.unsupportedDatabase, context: context)
         }
 
-        return FluentQueue(context: context, sqlDb: sqlDb)
+        return FluentQueue(
+            context: context,
+            sqlDB: sqlDB,
+            preservesCompletedJobs: self.preservesCompletedJobs,
+            jobsTable: .init(self.jobsTableName, space: self.jobsTableSpace)
+        )
     }
     
     public func shutdown() {}
