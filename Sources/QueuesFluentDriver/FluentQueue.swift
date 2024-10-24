@@ -38,7 +38,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 .bind(jobStorage.jobName),
                 .bind(jobStorage.queuedAt),
                 .bind(jobStorage.delayUntil),
-                .literal(StoredJobState.pending),
+                .literal(StoredJobState.initial),
                 .bind(jobStorage.maxRetryCount),
                 .bind(jobStorage.attempts),
                 .bind(Data(jobStorage.payload)),
