@@ -6,6 +6,9 @@ import struct Queues.QueueName
 
 /// The state of a job currently stored in the database.
 enum StoredJobState: String, Codable, CaseIterable {
+    /// Job has been set up but is not yet ready to execute.
+    case initial
+    
     /// Job is ready to be picked up for execution.
     case pending
     
