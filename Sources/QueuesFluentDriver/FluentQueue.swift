@@ -25,7 +25,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
             throw QueuesFluentError.missingJob(id)
         }
 
-        return .init(payload: .init(job.payload), maxRetryCount: job.maxRetryCount, jobName: job.jobName, delayUntil: job.delayUntil, queuedAt: job.queuedAt)
+        return .init(payload: .init(job.payload), maxRetryCount: job.maxRetryCount, jobName: job.jobName, delayUntil: job.delayUntil, queuedAt: job.queuedAt, attempts: job.attempts)
     }
     
     // See `Queue.set(_:to:)`.

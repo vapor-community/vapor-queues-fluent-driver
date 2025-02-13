@@ -147,6 +147,24 @@ final class QueuesFluentDriverTests: XCTestCase {
         )
     } }
 
+    func testFailedJobRetry() async throws { try await self.withEachDatabase {
+        let jobID = JobIdentifier()
+        
+        let failingJob = FailingJob()
+        
+        self.app.queues.add(failingJob)
+        self.app.get("test") { req in
+            try await req.queue.dispatch(FailingJob.self, [:], maxRetryCount: 5, id: jobID)
+            return HTTPStatus.ok
+        }
+        try await self.app.testable().test(.GET, "test") { res async in
+            XCTAssertEqual(res.status, .ok)
+        }
+        
+        try? await self.app.queues.queue.worker.run().get()
+        await XCTAssertEqualAsync(await failingJob.runCount, 6)
+    } }
+
     func testDelayedJobIsRemovedFromProcessingQueue() async throws { try await self.withEachDatabase {
         let jobID = JobIdentifier()
 
@@ -313,10 +331,16 @@ struct DelayedJob: AsyncJob {
     }
 }
 
-struct FailingJob: AsyncJob {
+actor FailingJob: AsyncJob {
     struct Failure: Error {}
     
-    func dequeue(_ context: QueueContext, _ message: [String: String]) async throws { throw Failure() }
+    var runCount = 0
+    
+    func dequeue(_ context: QueueContext, _ message: [String: String]) async throws {
+        runCount += 1
+        throw Failure()
+    }
+    
     func error(_ context: QueueContext, _ error: any Error, _ payload: [String: String]) async throws { throw Failure() }
 }
 
