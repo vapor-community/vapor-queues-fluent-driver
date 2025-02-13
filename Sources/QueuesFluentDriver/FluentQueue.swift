@@ -99,7 +99,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
             .from(self.jobsTable)
             .where("state", .equal, .literal(StoredJobState.pending))
             .where("queue_name", .equal, self.queueName)
-            .where(.dateValue(.function("coalesce", .column("delay_until"), SQLNow())), .lessThanOrEqual, .now())
+            .where(.function("coalesce", .column("delay_until"), .now()), .lessThanOrEqual, .now())
             .orderBy("delay_until")
             .orderBy("queued_at")
             .limit(1)
