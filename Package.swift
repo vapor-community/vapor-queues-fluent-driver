@@ -1,6 +1,5 @@
 // swift-tools-version:5.9
 import PackageDescription
-import class Foundation.ProcessInfo
 
 let package = Package(
     name: "QueuesFluentDriver",
@@ -14,16 +13,16 @@ let package = Package(
         .library(name: "QueuesFluentDriver", targets: ["QueuesFluentDriver"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.100.0"),
-        .package(url: "https://github.com/vapor/fluent.git", from: "4.10.0"),
-        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.48.4"),
-        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.30.0"),
-        .package(url: "https://github.com/vapor/queues.git", from: "1.15.0"),
-        .package(url: "https://github.com/vapor/console-kit.git", from: "4.14.3"),
-    ] + (ProcessInfo.processInfo.environment["CI"] != nil ? [
-        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.7.1"),
-        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.9.1"),
-        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.5.0"),
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.106.0"),
+        .package(url: "https://github.com/vapor/fluent.git", from: "4.12.0"),
+        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.49.0"),
+        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.32.0"),
+        .package(url: "https://github.com/vapor/queues.git", from: "1.16.1"),
+        .package(url: "https://github.com/vapor/console-kit.git", from: "4.15.0"),
+    ] + (Context.environment["CI"] != nil ? [
+        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.8.0"),
+        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.10.0"),
+        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.7.0"),
     ] : []),
     targets: [
         .target(
@@ -44,7 +43,7 @@ let package = Package(
                 .product(name: "XCTVapor", package: "vapor"),
                 .product(name: "ConsoleKitTerminal", package: "console-kit"),
                 .target(name: "QueuesFluentDriver"),
-            ] + (ProcessInfo.processInfo.environment["CI"] != nil ? [
+            ] + (Context.environment["CI"] != nil ? [
                 .product(name: "FluentSQLiteDriver", package: "fluent-sqlite-driver"),
                 .product(name: "FluentPostgresDriver", package: "fluent-postgres-driver"),
                 .product(name: "FluentMySQLDriver", package: "fluent-mysql-driver"),

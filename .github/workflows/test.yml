@@ -34,15 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     container: ${{ matrix.swift-image }}
     services:
-      psql: { image: 'postgres:16', env: { POSTGRES_USER: test_username, POSTGRES_PASSWORD: test_password, POSTGRES_DB: test_database, POSTGRES_HOST_AUTH_METHOD: scram-sha-256, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 } }
-      mysql: { image: 'mysql:8', env: { MYSQL_ALLOW_EMPTY_PASSWORD: true, MYSQL_USER: test_username, MYSQL_PASSWORD: test_password, MYSQL_DATABASE: test_database } }
+      psql: { image: 'postgres:17', env: { POSTGRES_USER: test_username, POSTGRES_PASSWORD: test_password, POSTGRES_DB: test_database, POSTGRES_HOST_AUTH_METHOD: scram-sha-256, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 } }
+      mysql: { image: 'mysql:9', env: { MYSQL_ALLOW_EMPTY_PASSWORD: true, MYSQL_USER: test_username, MYSQL_PASSWORD: test_password, MYSQL_DATABASE: test_database } }
     timeout-minutes: 60
     steps:
       - name: Check out code
         uses: actions/checkout@v4
       - name: Run unit tests
         env:
-          SANITIZE: ${{ matrix.sanitize }}
           POSTGRES_HOST: psql
           MYSQL_HOST: mysql
         run: SWIFT_DETERMINISTIC_HASHING=1 swift test --sanitize=thread --enable-code-coverage

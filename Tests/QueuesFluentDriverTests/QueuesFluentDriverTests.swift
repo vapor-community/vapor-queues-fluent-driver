@@ -266,6 +266,15 @@ final class QueuesFluentDriverTests: XCTestCase {
         XCTAssertEqual(model.attempts, 0)
         XCTAssertEqual(model.payload, Data())
         XCTAssertNotNil(model.updatedAt)
+
+        let contrivedJobDataRaw = #"{"payload":[],"maxRetryCount":0,"queuedAt":0,"jobName":""}"#
+        let contrivedJobData = try! JSONDecoder().decode(JobData.self, from: Data(contrivedJobDataRaw.utf8))
+
+        XCTAssertNil(contrivedJobData.attempts)
+
+        let contrivedModel = JobModel(id: .init(string: ""), queue: .init(string: ""), jobData: contrivedJobData)
+
+        XCTAssertEqual(contrivedModel.attempts, 0)
     }
 
     func testSQLKitUtilities() async throws { try await self.withEachDatabase {
