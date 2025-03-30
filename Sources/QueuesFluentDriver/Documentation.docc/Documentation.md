@@ -11,7 +11,7 @@ A driver for [Queues]. Uses [Fluent] to store job metadata in an SQL database.
 
 ## Compatibility
 
-This package makes use of the `SKIP LOCKED` feature supported by some of the major database engines (most notably [PostgresSQL][postgres-skip-locked] and [MySQL][mysql-skip-locked]) when available to make a best-effort guarantee that a task or job won't be picked by multiple workers.
+This package makes use of the `SKIP LOCKED` feature supported by some of the major database engines (most notably [PostgresSQL][postgres-skip-locked] and [MySQL][mysql-skip-locked]) when available to make a best-effort guarantee that a job won't be picked up by multiple workers.
 
 This package should be compatible with any SQL database supported by the various Fluent drivers. It is specifically known to work with:
 
@@ -20,8 +20,7 @@ This package should be compatible with any SQL database supported by the various
 - MariaDB 10.5+
 - SQLite
 
-> [!WARNING]
-> Although SQLite can be used with this package, SQLite has no support for advanced locking. It is not likely to function correctly with more than one or two queue workers.
+> Warning: Although SQLite can be used with this package, SQLite has no support for advanced locking. It is not likely to function correctly with more than one or two queue workers.
 
 [postgres-skip-locked]: https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE
 [mysql-skip-locked]: https://dev.mysql.com/doc/refman/8.4/en/select.html#:~:text=SKIP%20LOCKED%20causes%20a
@@ -30,31 +29,34 @@ This package should be compatible with any SQL database supported by the various
 
 #### Adding the dependency
 
-Add `QueuesFluentDriver` as dependency to your `Package.swift`:
+Add `QueuesFluentDriver` to your `Package.swift` as a dependency:
 
 ```swift
-dependencies: [
-  .package(url: "https://github.com/vapor-community/vapor-queues-fluent-driver.git", from: "3.0.0-beta.4"),
-  ...
-]
+  dependencies: [
+    .package(url: "https://github.com/vapor-community/vapor-queues-fluent-driver.git", from: "3.0.0"),
+    ...
+  ]
 ```
 
-Add `QueuesFluentDriver` to the target you want to use it in:
+Then add `QueuesFluentDriver` to the target you want to use it in:
 ```swift
-targets: [
-    .target(
-        name: "MyFancyTarget",
-        dependencies: [
-            .product(name: "QueuesFluentDriver", package: "vapor-queues-fluent-driver"),
-            ...
-        ]
-    ),
-]
+  targets: [
+    .target(name: "MyFancyTarget", dependencies: [
+      .product(name: "QueuesFluentDriver", package: "vapor-queues-fluent-driver"),
+    ])
+  ]
+```
+
+Or use SwiftPM's dependency management commands:
+
+```
+swift package add-dependency 'https://github.com/vapor-community/vapor-queues-fluent-driver.git' --from '3.0.0'
+swift package add-target-dependency --package vapor-queues-fluent-driver QueuesFluentDriver MyFancyTarget
 ```
 
 #### Configuration
 
-This package includes a migration to create the database table which holds job metadata; add it to your Fluent configuration as you would any other migration:
+This package includes a migration to create the database table which holds job metadata. Add it to your Fluent configuration as you would any other migration:
 
 ```swift
 app.migrations.add(JobModelMigration())
@@ -65,13 +67,15 @@ Finally, load the `QueuesFluentDriver` driver:
 app.queues.use(.fluent())
 ```
 
-> Warning: Always call `app.databases.use(...)` **before** calling `app.queues.use(.fluent())`!
-
 ## Options
 
-### Using a custom Database 
+The `.fluent()` driver method accepts several configuration options.
 
-You can optionally create a dedicated non-default `Database` with a custom `DatabaseID` for use with your queues, as in the following example:
+### Using a custom DatabaseID
+
+The driver may be configured with a `DatabaseID` other than the default to use for queue operations. The default of `nil` corresponds to Fluent's default database. The database ID must be registered with `app.databases.use(...)` _before_ configuring the Queues driver.
+
+Example:
 
 ```swift
 extension DatabaseID {
@@ -79,16 +83,45 @@ extension DatabaseID {
 }
 
 func configure(_ app: Application) async throws {
-    app.databases.use(.postgres(configuration: ...), as: .queues, isDefault: false)
+    app.databases.use(.postgres(configuration: ...), as: .queues)
     app.queues.use(.fluent(.queues))
 }
 ```
+
+### Preserving records of completed jobs
+
+By default, once a job has finished, it is removed entirely from the jobs table in the database. Setting the `preserveCompletedJobs` parameter to `true` configures the driver to leave finished jobs in the jobs table, with a state of `completed`.
+
+Example:
+
+```swift
+func configure(_ app: Application) async throws {
+    app.queues.use(.fluent(preserveCompletedJobs: true))
+}
+```
+
+> Note: The driver never removes jobs in the `completed` state from the table, even if `preserveCompletedJobs` is later turned off. "Cleaning up" completed jobs must be done manually, with a query such as `DELETE FROM _jobs_meta WHERE state='completed'`.
+
+### Changing the name and location of the jobs table
+
+By default, the jobs table is created in the default space (e.g. the current schema - usually `public` - in PostgreSQL, or the current database in MySQL and SQLite) and has the name `_jobs_meta`. The table name and space may be configured, using the `jobsTableName` and `jobsTableSpace` parameters respectively. If the `JobModelMigration` is in use (recommended), the same name and space must be passed to both its initializer and the driver for the migration to work correctly.
+
+Example:
+
+```swift
+func configure(_ app: Application) async throws {
+    app.migrations.add(JobModelMigration(jobsTableName: "_my_jobs", jobsTableSpace: "not_public"))
+    app.queues.use(.fluent(jobsTableName: "_my_jobs", jobsTableSpace: "not_public"))
+}
+```
+
+> Note: When the `JobModelMigration` is used with PostgreSQL, the table name is used as a prefix for the enumeration type created to represent job states in the database, and the enumeration type is created in the same space as the table.
 
 ## Caveats
 
 ### Polling interval and number of workers
 
-By default, the Vapor Queues system starts 2 workers per available CPU core, with each worker would polling the database once per second. On a 4-core system, this would results in 8 workers querying the database every second. Most configurations do not need this many workers. Additionally, when using SQLite as the underlying database it is generally inadvisable to run more than one worker at a time, as SQLite does not have the necessary support for cross-connection locking.
+By default, the Vapor Queues system starts 2 workers per available CPU core, with each worker would polling the database once per second. On a 4-core system, this would results in 8 workers querying the database every second. Most configurations do not need this many workers. Additionally, when using SQLite as the underlying database it is generally inadvisable to run more than one worker at a time, as SQLite does not have the necessary support for locking to make this safe.
 
 The polling interval can be changed using the `refreshInterval` configuration setting:
 
