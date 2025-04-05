@@ -1,6 +1,9 @@
 import SQLKit
 import FluentKit
 
+/// A migration to create the job metadata table and any associated objects, such as enumeration types and indexes.
+///
+/// This migration is guaranteed to be compatible with MySQL 5.7+, PostgreSQL, and SQLite.
 public struct JobModelMigration: AsyncSQLMigration {
     private let jobsTable: SQLQualifiedTable
     private let jobsTableIndexName: String
