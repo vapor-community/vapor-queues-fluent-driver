@@ -62,6 +62,14 @@ This package includes a migration to create the database table which holds job m
 app.migrations.add(JobModelMigration())
 ```
 
+If you were previously a user of the 1.x or 2.x releases of this driver and have an existing job metadata table in the old data format, you can use `JobModelOldFormatMigration` instead to transparently upgrade the old table to the new format:
+
+```swift
+app.migrations.add(JobModelOldFormatMigration())
+```
+
+> Important: Use only one or the other of the two migrations; do _not_ use both, and do not change which one you use once one of them has been run.
+
 Finally, load the `QueuesFluentDriver` driver:
 ```swift    
 app.queues.use(.fluent())
@@ -104,18 +112,21 @@ func configure(_ app: Application) async throws {
 
 ### Changing the name and location of the jobs table
 
-By default, the jobs table is created in the default space (e.g. the current schema - usually `public` - in PostgreSQL, or the current database in MySQL and SQLite) and has the name `_jobs_meta`. The table name and space may be configured, using the `jobsTableName` and `jobsTableSpace` parameters respectively. If the `JobModelMigration` is in use (recommended), the same name and space must be passed to both its initializer and the driver for the migration to work correctly.
+By default, the jobs table is created in the default space (e.g. the current schema - usually `public` - in PostgreSQL, or the current database in MySQL and SQLite) and has the name `_jobs_meta`. The table name and space may be configured, using the `jobsTableName` and `jobsTableSpace` parameters respectively. If `JobModelMigration` or `JobModelOldFormatMigration` are in use (as is recommended), the same name and space must be passed to both its initializer and the driver for the migration to work correctly.
 
 Example:
 
 ```swift
 func configure(_ app: Application) async throws {
     app.migrations.add(JobModelMigration(jobsTableName: "_my_jobs", jobsTableSpace: "not_public"))
+    // OR
+    app.migrations.add(JobModelOldFormatMigration(jobsTableName: "_my_jobs", jobsTableSpace: "not_public"))
+    
     app.queues.use(.fluent(jobsTableName: "_my_jobs", jobsTableSpace: "not_public"))
 }
 ```
 
-> Note: When the `JobModelMigration` is used with PostgreSQL, the table name is used as a prefix for the enumeration type created to represent job states in the database, and the enumeration type is created in the same space as the table.
+> Note: When `JobModelMigration` or `JobModelOldFormatMigration` are used with PostgreSQL, the table name is used as a prefix for the enumeration type created to represent job states in the database, and the enumeration type is created in the same space as the table.
 
 ## Caveats
 
