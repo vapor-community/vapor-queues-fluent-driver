@@ -1,4 +1,5 @@
 import SQLKit
+import FluentKit
 
 public struct JobModelMigration: AsyncSQLMigration {
     private let jobsTable: SQLQualifiedTable

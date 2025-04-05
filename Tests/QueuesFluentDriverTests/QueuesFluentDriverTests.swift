@@ -1,11 +1,5 @@
-import XCTest
-import XCTVapor
-import FluentKit
-import Logging
-import SQLKit
 import ConsoleKitTerminal
-@testable import QueuesFluentDriver
-import Queues
+import Fluent
 #if canImport(FluentSQLiteDriver)
 import FluentSQLiteDriver
 #endif
@@ -15,7 +9,13 @@ import FluentPostgresDriver
 #if canImport(FluentMySQLDriver)
 import FluentMySQLDriver
 #endif
+import Logging
 import NIOSSL
+import Queues
+@testable import QueuesFluentDriver
+import SQLKit
+import XCTest
+import XCTVapor
 
 extension DatabaseID {
     static var mysql2: Self { .init(string: "mysql2") }
