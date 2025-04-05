@@ -68,13 +68,15 @@ enum SQLLockingClauseWithSkipLocked: SQLExpression {
 
 /// These overloads allow specifying various commonly-used `SQLExpression`s using more concise syntax. For example,
 /// `.bind("hello")` rather than `SQLBind("hello")`, `.group(expr)` rather than `SQLGroupExpression(expr)`, etc.
+/// This is a small portion extracted from a much more robust SQLKit utility library, which can be found at
+/// https://gist.github.com/gwynne/9bc9d04d44cf53dca529b526b7736324
 
 extension SQLExpression {
     static func dateValue<E: SQLExpression>(_ value: E) -> Self where Self == SQLDateValue<E> { .init(value) }
     
     static func now() -> Self where Self == SQLDateValue<SQLNow> { .now() }
 
-    static func function(_ name: String, _ args: any SQLExpression...) -> Self where Self == SQLFunction { .init(name, args: args) }
+    static func function(_ name: String, _ args: any SQLExpression...) -> Self where Self == SQLFunction { .function(name, args) }
     static func function(_ name: String, _ args: [any SQLExpression]) -> Self where Self == SQLFunction { .init(name, args: args) }
     
     static func group(_ expr: some SQLExpression) -> Self where Self == SQLGroupExpression { .init(expr) }
