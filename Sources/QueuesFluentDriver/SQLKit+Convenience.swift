@@ -112,7 +112,7 @@ extension SQLDatabase {
         return fluentSelf.transaction { fluentTransaction in closure(fluentTransaction as! any SQLDatabase) }
     }
 
-    func transaction<T>(_ closure: @escaping @Sendable (any SQLDatabase) async throws -> T) async throws -> T {
+    func transaction<T: Sendable>(_ closure: @escaping @Sendable (any SQLDatabase) async throws -> T) async throws -> T {
         guard let fluentSelf = self as? any Database else { fatalError("Cannot use `SQLDatabase.transaction(_:)` on a non-Fluent database.") }
         
         return try await fluentSelf.transaction { fluentTransaction in try await closure(fluentTransaction as! any SQLDatabase) }
@@ -148,5 +148,12 @@ extension AsyncSQLMigration {
     
     public func revert(on database: any Database) async throws {
         try await self.revert(on: database as! any SQLDatabase)
+    }
+}
+
+/// This extension covers a gap in the `SQLAlterTableBuilder` API.
+extension SQLDatabase {
+    func alter(table: some SQLExpression) -> SQLAlterTableBuilder {
+        .init(.init(name: table), on: self)
     }
 }

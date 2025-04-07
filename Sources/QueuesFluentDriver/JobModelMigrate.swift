@@ -1,5 +1,9 @@
 import SQLKit
+import FluentKit
 
+/// A migration to create the job metadata table and any associated objects, such as enumeration types and indexes.
+///
+/// This migration is guaranteed to be compatible with MySQL 5.7+, PostgreSQL, and SQLite.
 public struct JobModelMigration: AsyncSQLMigration {
     private let jobsTable: SQLQualifiedTable
     private let jobsTableIndexName: String
@@ -30,22 +34,20 @@ public struct JobModelMigration: AsyncSQLMigration {
         case .inline:
             actualStateEnumType = .custom(SQLEnumDataType(cases: StoredJobState.allCases.map { .literal($0.rawValue) }))
         default:
-            // This is technically a misuse of SQLFunction, but it produces the correct syntax
-            actualStateEnumType = .custom(.function("varchar", .literal(16)))
+            actualStateEnumType = .custom(SQLRaw("varchar(16)"))
         }
 
         /// This whole pile of nonsense is only here because of
         /// https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_explicit_defaults_for_timestamp
-        /// In short, I'm making things work in MySQL 5.7 as a favor to a colleague.
         let manualTimestampType: SQLDataType, autoTimestampConstraints: [SQLColumnConstraintAlgorithm]
 
         switch database.dialect.name {
         case "mysql":
-            manualTimestampType = .custom(SQLRaw("DATETIME"))
+            manualTimestampType = .custom(SQLRaw("datetime(6)")) // this is what `.datetime` translates to when using Fluent+MySQL
             autoTimestampConstraints = [.custom(SQLLiteral.null), .default(SQLLiteral.null)]
         default:
             manualTimestampType = .timestamp
-            autoTimestampConstraints = []
+            autoTimestampConstraints = [.notNull]
         }
 
         try await database.create(table: self.jobsTable)
@@ -58,7 +60,7 @@ public struct JobModelMigration: AsyncSQLMigration {
             .column("max_retry_count", type: .int,                .notNull)
             .column("attempts",        type: .int,                .notNull)
             .column("payload",         type: .blob,               .notNull)
-            .column("updated_at",      type: .timestamp,          autoTimestampConstraints)
+            .column("updated_at",      type: manualTimestampType, autoTimestampConstraints)
             .run()
         try await database.create(index: self.jobsTableIndexName)
             .on(self.jobsTable)

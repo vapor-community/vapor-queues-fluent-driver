@@ -1,11 +1,5 @@
-import XCTest
-import XCTVapor
-import FluentKit
-import Logging
-import SQLKit
 import ConsoleKitTerminal
-@testable import QueuesFluentDriver
-import Queues
+import Fluent
 #if canImport(FluentSQLiteDriver)
 import FluentSQLiteDriver
 #endif
@@ -15,7 +9,13 @@ import FluentPostgresDriver
 #if canImport(FluentMySQLDriver)
 import FluentMySQLDriver
 #endif
+import Logging
 import NIOSSL
+import Queues
+@testable import QueuesFluentDriver
+import SQLKit
+import XCTest
+import XCTVapor
 
 extension DatabaseID {
     static var mysql2: Self { .init(string: "mysql2") }
@@ -65,27 +65,35 @@ final class QueuesFluentDriverTests: XCTestCase {
         #endif
     }
 
-    private func withEachDatabase(preserveJobs: Bool = false, tableName: String = "_jobs_meta", _ closure: () async throws -> Void) async throws {
+    private func withEachDatabase(preserveJobs: Bool = false, tableName: String? = "_jobs_meta", _ closure: () async throws -> Void) async throws {
         func run(_ dbid: DatabaseID, defaultSpace: String? = nil) async throws {
             self.dbid = dbid
             self.app = try await Application.make(.testing)
             self.app.logger[metadataKey: "test-dbid"] = "\(dbid.string)"
 
             try self.useDBs(self.app)
-            self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: defaultSpace), to: self.dbid)
-            self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: defaultSpace))
+            if let tableName {
+                self.app.migrations.add(JobModelMigration(jobsTableName: tableName, jobsTableSpace: defaultSpace), to: self.dbid)
+                self.app.queues.use(.fluent(self.dbid, preservesCompletedJobs: preserveJobs, jobsTableName: tableName, jobsTableSpace: defaultSpace))
+            }
 
-            try await self.app.autoMigrate()
+            if tableName != nil {
+                try await self.app.autoMigrate()
+            }
 
             do { try await closure() }
             catch {
-                try? await self.app.autoRevert()
+                if tableName != nil {
+                    try? await self.app.autoRevert()
+                }
                 try? await self.app.asyncShutdown()
                 self.app = nil
                 throw error
             }
 
-            try await self.app.autoRevert()
+            if tableName != nil {
+                try await self.app.autoRevert()
+            }
             try await self.app.asyncShutdown()
             self.app = nil
         }
@@ -236,6 +244,105 @@ final class QueuesFluentDriverTests: XCTestCase {
             1
         )
     } }
+
+    func testOldFormatMigration() async throws { try await self.withEachDatabase(tableName: nil) {
+        // N.B.: One probably notices that MySQL gets a lot of special-casing in this test. This is another instance
+        // of it; we only need this so the `SET time_zone` thing will work.
+        try await self.app.db(self.dbid).withConnection { db in
+
+        let sqlDb = db as! any SQLDatabase
+        let isMySQL = sqlDb.dialect.name == "mysql"
+
+        if isMySQL {
+            let version = try await sqlDb.select().column(.function("version"), as: "version").first(decodingColumn: "version", as: String.self)!
+            if version.starts(with: "5.") || !(version.first?.isNumber ?? false) {
+                return // This migration is known to require MySQL 8.0+
+            }
+
+            try await sqlDb.raw("SET time_zone='+00:00'").run()
+        }
+
+        // Taken from https://github.com/m-barthelemy/vapor-queues-fluent-driver/blob/2.0.0/Sources/QueuesFluentDriver/JobModelMigrate.swift
+        try await db.schema("_old_jobs_meta")
+            .id()
+            .field("job_id",     .string, .required)
+            .field("queue",      .string, .required)
+            .field("data",       .data,   .required)
+            .field("state",      .string, .required)
+            .field("created_at", .datetime)
+            .field("updated_at", .datetime)
+            .field("deleted_at", .datetime)
+            .create()
+
+        do {
+            let job1Jobid = UUID().uuidString,
+                job1DelayUntil = Date(timeIntervalSinceReferenceDate: Double(Int(Date().timeIntervalSinceReferenceDate * 1000.0)) / 1000.0 + 120.0), // avoid rounding error
+                job1QueuedAt = Date(timeIntervalSinceReferenceDate: Double(Int(Date().timeIntervalSinceReferenceDate * 1000.0)) / 1000.0), // avoid rounding error
+                job1JobData = JobData(payload: .init(#"{"hello": "world"}"#.utf8), maxRetryCount: 0, jobName: "Job 1", delayUntil: job1DelayUntil, queuedAt: job1QueuedAt),
+                job1Data = try JSONEncoder().encode(job1JobData), job1DataBind = isMySQL ? SQLBind(String(decoding: job1Data, as: UTF8.self)) : SQLBind(job1Data),
+                job2Jobid = UUID().uuidString,
+                job2QueuedAt = Date(timeIntervalSinceReferenceDate: Double(Int(Date().timeIntervalSinceReferenceDate * 1000.0)) / 1000.0), // avoid rounding error
+                job2JobData = JobData(payload: .init(#"{"world": "hello"}"#.utf8), maxRetryCount: 1, jobName: "Job 2", delayUntil: nil, queuedAt: job2QueuedAt, attempts: 0),
+                job2Data = try JSONEncoder().encode(job2JobData), job2DataBind = isMySQL ? SQLBind(String(decoding: job2Data, as: UTF8.self)) : SQLBind(job2Data)
+
+            try await sqlDb.insert(into: "_old_jobs_meta")
+                .columns("id", "job_id", "queue", "data", "state", "created_at", "updated_at", "deleted_at")
+                .values(.bind(UUID()), .bind(job1Jobid), .bind("test_queue1"), job1DataBind, .bind("processing"), .now(), .now(), .null())
+                .values(.bind(UUID()), .bind(job2Jobid), .bind("test_queue2"), job2DataBind, .bind("completed"), .now(), .now(), .now())
+                .run()
+
+            try await JobModelOldFormatMigration(jobsTableName: "_old_jobs_meta", jobsTableSpace: nil).prepare(on: db)
+
+            let count = try await sqlDb.select()
+                .column(.function("count", SQLLiteral.all), as: "count")
+                .from("_old_jobs_meta")
+                .first(decodingColumn: "count", as: Int.self)
+            XCTAssertEqual(count, 2)
+
+            let model1Maybe = try await sqlDb.select()
+                .columns("id", "queue_name", "job_name", "queued_at", "delay_until", "state", "max_retry_count", "attempts", "payload", "updated_at")
+                .from("_old_jobs_meta")
+                .where("id", .equal, .bind(job1Jobid))
+                .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)
+            let model1 = try XCTUnwrap(model1Maybe)
+
+            let model2Maybe = try await sqlDb.select()
+                .columns("id", "queue_name", "job_name", "queued_at", "delay_until", "state", "max_retry_count", "attempts", "payload", "updated_at")
+                .from("_old_jobs_meta")
+                .where("id", .equal, .bind(job2Jobid))
+                .first(decoding: JobModel.self, keyDecodingStrategy: .convertFromSnakeCase)
+            let model2 = try XCTUnwrap(model2Maybe)
+
+            XCTAssertEqual(model1.queueName, "test_queue1")
+            XCTAssertEqual(model1.jobName, "Job 1")
+            XCTAssertEqual(model1.queuedAt, job1QueuedAt)
+            XCTAssertEqual(model1.delayUntil, job1DelayUntil)
+            XCTAssertEqual(model1.state, .processing)
+            XCTAssertEqual(model1.maxRetryCount, 0)
+            XCTAssertEqual(model1.attempts, 0)
+            XCTAssertEqual(model1.payload, Data(job1JobData.payload), "\(String(decoding: model1.payload, as: UTF8.self)) - \(String(decoding: job1JobData.payload, as: UTF8.self))")
+            XCTAssertEqual(model2.queueName, "test_queue2")
+            XCTAssertEqual(model2.jobName, "Job 2")
+            XCTAssertEqual(model2.queuedAt, job2QueuedAt)
+            XCTAssertNil(model2.delayUntil)
+            XCTAssertEqual(model2.state, .completed)
+            XCTAssertEqual(model2.maxRetryCount, 1)
+            XCTAssertEqual(model2.attempts, 0)
+            XCTAssertEqual(model2.payload, Data(job2JobData.payload), "\(String(decoding: model2.payload, as: UTF8.self)) - \(String(decoding: job2JobData.payload, as: UTF8.self))")
+
+            try await sqlDb.drop(table: "_old_jobs_meta").ifExists().run()
+            if sqlDb.dialect.enumSyntax == .typeName {
+                try await sqlDb.drop(enum: "_old_jobs_meta_storedjobstatus").ifExists().run()
+            }
+        } catch {
+            try? await sqlDb.drop(table: "_old_jobs_meta").ifExists().run()
+            if sqlDb.dialect.enumSyntax == .typeName {
+                try? await sqlDb.drop(enum: "_old_jobs_meta_storedjobstatus").ifExists().run()
+            }
+            sqlDb.logger.error("Error", metadata: ["error": "\(String(reflecting: error))"])
+            throw error
+        }
+    } } }
 
     func testCoverageForFailingQueue() async throws {
         self.app = try await Application.make(.testing)
