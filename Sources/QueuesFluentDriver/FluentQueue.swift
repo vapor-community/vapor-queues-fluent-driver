@@ -1,6 +1,8 @@
+import NIOConcurrencyHelpers
+import protocol FluentKit.Database
 import Queues
 import SQLKit
-import NIOConcurrencyHelpers
+import SQLKitExtras
 import struct Foundation.Data
 
 /// An implementation of `Queue` which stores job data and metadata in a Fluent database.
@@ -38,7 +40,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 .bind(jobStorage.jobName),
                 .bind(jobStorage.queuedAt),
                 .bind(jobStorage.delayUntil),
-                .literal(StoredJobState.initial),
+                .literal(StoredJobState.initial.rawValue),
                 .bind(jobStorage.maxRetryCount),
                 .bind(jobStorage.attempts),
                 .bind(Data(jobStorage.payload)),
@@ -52,7 +54,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
     public func clear(_ id: JobIdentifier) async throws {
         if self.preservesCompletedJobs {
             try await self.sqlDB.update(self.jobsTable)
-                .set("state", to: .literal(StoredJobState.completed))
+                .set("state", to: .literal(StoredJobState.completed.rawValue))
                 .where("id", .equal, id)
                 .run()
         } else {
@@ -65,7 +67,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
     // See `Queue.push(_:)`.
     public func push(_ id: JobIdentifier) async throws {
         try await self.sqlDB.update(self.jobsTable)
-            .set("state", to: .literal(StoredJobState.pending))
+            .set("state", to: .literal(StoredJobState.pending.rawValue))
             .set("updated_at", to: .now())
             .where("id", .equal, id)
             .run()
@@ -97,7 +99,7 @@ public struct FluentQueue: AsyncQueue, Sendable {
         let select = SQLSubquery.select { $0
             .column("id")
             .from(self.jobsTable)
-            .where("state", .equal, .literal(StoredJobState.pending))
+            .where("state", .equal, .literal(StoredJobState.pending.rawValue))
             .where("queue_name", .equal, self.queueName)
             .where(.function("coalesce", .column("delay_until"), .now()), .lessThanOrEqual, .now())
             .orderBy("delay_until")
@@ -108,30 +110,60 @@ public struct FluentQueue: AsyncQueue, Sendable {
 
         if self.sqlDB.dialect.supportsReturning {
             return try await self.sqlDB.update(self.jobsTable)
-                .set("state", to: .literal(StoredJobState.processing))
+                .set("state", to: .literal(StoredJobState.processing.rawValue))
                 .set("updated_at", to: .now())
                 .where("id", .equal, select)
                 .returning("id")
                 .first(decodingColumn: "id", as: String.self)
                 .map(JobIdentifier.init(string:))
         } else {
-            return try await self.sqlDB.transaction { transaction in
-                guard let id = try await transaction.raw("\(select)") // using raw() to make sure we run on the transaction connection
+            return try await (self.sqlDB as! any Database).transaction { transaction in
+                guard let id = try await (transaction as! any SQLDatabase).raw("\(select)") // using raw() to make sure we run on the transaction connection
                     .first(decodingColumn: "id", as: String.self)
                 else {
                     return nil
                 }
 
-                try await transaction
+                try await (transaction as! any SQLDatabase)
                     .update(self.jobsTable)
-                    .set("state", to: .literal(StoredJobState.processing))
+                    .set("state", to: .literal(StoredJobState.processing.rawValue))
                     .set("updated_at", to: .now())
                     .where("id", .equal, id)
-                    .where("state", .equal, .literal(StoredJobState.pending))
+                    .where("state", .equal, .literal(StoredJobState.pending.rawValue))
                     .run()
 
                 return JobIdentifier(string: id)
             }
+        }
+    }
+}
+
+/// An alternative to `SQLLockingClause` which specifies the `SKIP LOCKED` modifier when the underlying database
+/// supports it. As MySQL's and PostgreSQL's manuals both note, this should not be used except in very specific
+/// scenarios, such as that of this package.
+///
+/// It is safe to use this expression with SQLite; its dialect correctly denies support for locking expressions.
+enum SQLLockingClauseWithSkipLocked: SQLExpression {
+    /// Request an exclusive "writer" lock, skipping rows that are already locked.
+    case updateSkippingLocked
+
+    /// Request a shared "reader" lock, skipping rows that are already locked.
+    ///
+    /// > Note: This is the "lightest" locking that is supported by both Postgres and MySQL.
+    case shareSkippingLocked
+    
+    // See `SQLExpression.serialize(to:)`.
+    func serialize(to serializer: inout SQLSerializer) {
+        serializer.statement {
+            switch self {
+            case .updateSkippingLocked:
+                guard $0.dialect.exclusiveSelectLockExpression != nil else { return }
+                $0.append(SQLLockingClause.update)
+            case .shareSkippingLocked:
+                guard $0.dialect.sharedSelectLockExpression != nil else { return }
+                $0.append(SQLLockingClause.share)
+            }
+            $0.append("SKIP LOCKED")
         }
     }
 }
