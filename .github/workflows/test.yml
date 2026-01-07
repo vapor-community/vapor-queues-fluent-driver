@@ -38,6 +38,8 @@ jobs:
       mysql: { image: 'mysql:9', env: { MYSQL_ALLOW_EMPTY_PASSWORD: true, MYSQL_USER: test_username, MYSQL_PASSWORD: test_password, MYSQL_DATABASE: test_database } }
     timeout-minutes: 60
     steps:
+      - name: Install curl
+        run: apt-get update -yq && apt-get install -y curl
       - name: Check out code
         uses: actions/checkout@v4
       - name: Run unit tests
