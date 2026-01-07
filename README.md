@@ -20,7 +20,7 @@ This package should be compatible with any SQL database supported by the various
 > Although SQLite can be used with this package, SQLite has no support for advanced locking. It is not likely to function correctly with more than one or two queue workers.
 
 [postgres-skip-locked]: https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE
-[mysql-skip-locked]: https://dev.mysql.com/doc/refman/8.4/en/select.html#:~:text=SKIP%20LOCKED%20causes%20a
+[mysql-skip-locked]: https://dev.mysql.com/doc/refman/9.5/en/select.html#:~:text=SKIP%20LOCKED%20causes%20a
 
 ## Getting started
 

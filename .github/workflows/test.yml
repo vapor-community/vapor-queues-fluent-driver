@@ -5,6 +5,8 @@ concurrency:
 on:
   pull_request: { types: [opened, reopened, synchronize, ready_for_review] }
   push: { branches: [ main ] }
+permissions:
+  contents: read
 
 jobs:
   api-breakage:
@@ -14,7 +16,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with: { 'fetch-depth': 0 }
       - name: Run API breakage check
         run: |
@@ -27,26 +29,25 @@ jobs:
       fail-fast: false
       matrix:
         swift-image:
-          - swift:5.10-noble
           - swift:6.0-noble
           - swift:6.1-noble
-          - swiftlang/swift:nightly-main-jammy
+          - swift:6.2-noble
     runs-on: ubuntu-latest
     container: ${{ matrix.swift-image }}
     services:
-      psql: { image: 'postgres:17', env: { POSTGRES_USER: test_username, POSTGRES_PASSWORD: test_password, POSTGRES_DB: test_database, POSTGRES_HOST_AUTH_METHOD: scram-sha-256, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 } }
+      psql: { image: 'postgres:18', env: { POSTGRES_USER: test_username, POSTGRES_PASSWORD: test_password, POSTGRES_DB: test_database, POSTGRES_HOST_AUTH_METHOD: scram-sha-256, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 } }
       mysql: { image: 'mysql:9', env: { MYSQL_ALLOW_EMPTY_PASSWORD: true, MYSQL_USER: test_username, MYSQL_PASSWORD: test_password, MYSQL_DATABASE: test_database } }
     timeout-minutes: 60
     steps:
-      - name: Install curl
-        run: apt-get update -yq && apt-get install -y curl
+      - name: Ensure curl
+        run: apt-get update && apt-get install -y curl
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run unit tests
         env:
           POSTGRES_HOST: psql
           MYSQL_HOST: mysql
-        run: SWIFT_DETERMINISTIC_HASHING=1 swift test --sanitize=thread --enable-code-coverage
+        run: swift test --sanitize=thread --enable-code-coverage
       - name: Upload coverage data
         uses: vapor/swift-codecov-action@v0.3
         with:
@@ -58,9 +59,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - macos-version: macos-14
-            xcode-version: latest-stable
           - macos-version: macos-15
+            xcode-version: latest-stable
+          - macos-version: macos-26
             xcode-version: latest-stable
     runs-on: ${{ matrix.macos-version }}
     timeout-minutes: 60
@@ -71,12 +72,10 @@ jobs:
           xcode-version: ${{ matrix.xcode-version }}
       - name: Install and setup Postgres
         run: |
-          export PATH="$(brew --prefix)/opt/postgresql@16/bin:$PATH" PGDATA=/tmp/vapor-postgres-test
-          (brew upgrade python@3.11 || true) && (brew link --force --overwrite python@3.11 || true)
-          (brew upgrade python@3.12 || true) && (brew link --force --overwrite python@3.12 || true)
-          (brew upgrade || true)
-          brew install --overwrite postgresql@16 && brew link --overwrite --force postgresql@16
-          initdb --locale=C --auth-host scram-sha-256 -U test_username --pwfile=<(echo test_password)
+          brew upgrade || true
+          export PGDATA=/tmp/vapor-postgres-test
+          brew install "postgresql@18" && brew link --force "postgresql@18"
+          initdb --locale=C --auth-host "scram-sha-256" -U test_username --pwfile=<(echo test_password)
           pg_ctl start --wait
           PGPASSWORD=test_password createdb -w -U test_username -O test_username test_database
           PGPASSWORD=test_password psql -U test_username -w test_database <<<"ALTER SCHEMA public OWNER TO test_username;"
@@ -91,7 +90,7 @@ jobs:
               GRANT ALL PRIVILEGES ON test_database.* TO test_username@localhost;
           SQL
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run unit tests
         env:
           POSTGRES_HOST: 127.0.0.1
@@ -104,12 +103,18 @@ jobs:
 
   musl:
     runs-on: ubuntu-latest
-    container: swift:6.1-noble
+    container: swift:6.2-noble
     timeout-minutes: 30
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+      - name: Install utilities
+        run: apt-get update && apt-get install -y curl jq
       - name: Install SDK
-        run: swift sdk install https://download.swift.org/swift-6.1-release/static-sdk/swift-6.1-RELEASE/swift-6.1-RELEASE_static-linux-0.0.1.artifactbundle.tar.gz --checksum 111c6f7d280a651208b8c74c0521dd99365d785c1976a6e23162f55f65379ac6
+        run: |
+          tag="$(swiftc --version | grep -Po '(?<=\().+(?=\))')"
+          checksum="$(curl -s https://www.swift.org/api/v1/install/releases.json | \
+            jq -r --arg tag "$tag" '.[] | select(.tag == $tag).platforms[] | select(.platform == "static-sdk").checksum // empty')"
+          swift sdk install https://download.swift.org/$(echo $tag | tr [A-Z] [a-z])/static-sdk/$tag/"$tag"_static-linux-0.0.1.artifactbundle.tar.gz --checksum $checksum
       - name: Build
         run: swift build --swift-sdk x86_64-swift-linux-musl
