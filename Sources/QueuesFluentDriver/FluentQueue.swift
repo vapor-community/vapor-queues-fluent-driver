@@ -45,9 +45,17 @@ public struct FluentQueue: AsyncQueue, Sendable {
                 .bind(jobStorage.attempts),
                 .bind(Data(jobStorage.payload)),
                 .now()
-            )
-            // .model(JobModel(id: id, queue: self.queueName, jobData: jobStorage), keyEncodingStrategy: .convertToSnakeCase) // because enums!
-            .run()
+            ).onConflict(with: "id") { $0
+                .set(excludedValueOf: "queue_name")
+                .set(excludedValueOf: "job_name")
+                .set(excludedValueOf: "queued_at")
+                .set(excludedValueOf: "delay_until")
+                .set(excludedValueOf: "state")
+                .set(excludedValueOf: "max_retry_count")
+                .set(excludedValueOf: "attempts")
+                .set(excludedValueOf: "payload")
+                .set(excludedValueOf: "updated_at")
+            }.run()
     }
     
     // See `Queue.clear(_:)`.

@@ -1,4 +1,4 @@
-// swift-tools-version:5.10
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
@@ -13,17 +13,17 @@ let package = Package(
         .library(name: "QueuesFluentDriver", targets: ["QueuesFluentDriver"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/vapor/vapor.git", from: "4.106.0"),
-        .package(url: "https://github.com/vapor/fluent.git", from: "4.12.0"),
-        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.49.0"),
-        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.33.0"),
-        .package(url: "https://github.com/vapor/queues.git", from: "1.16.1"),
-        .package(url: "https://github.com/vapor/console-kit.git", from: "4.15.0"),
-        .package(url: "https://github.com/vapor-community/sql-kit-extras.git", from: "0.0.6"),
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.121.0"),
+        .package(url: "https://github.com/vapor/fluent.git", from: "4.13.0"),
+        .package(url: "https://github.com/vapor/fluent-kit.git", from: "1.53.0"),
+        .package(url: "https://github.com/vapor/sql-kit.git", from: "3.34.0"),
+        .package(url: "https://github.com/vapor/queues.git", from: "1.17.2"),
+        .package(url: "https://github.com/vapor/console-kit.git", from: "4.15.2"),
+        .package(url: "https://github.com/vapor-community/sql-kit-extras.git", from: "0.0.9"),
     ] + (Context.environment["CI"] != nil ? [
-        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.8.0"),
-        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.10.0"),
-        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.7.0"),
+        .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.8.1"),
+        .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.12.0"),
+        .package(url: "https://github.com/vapor/fluent-mysql-driver.git", from: "4.8.0"),
     ] : []),
     targets: [
         .target(
@@ -56,10 +56,10 @@ let package = Package(
 )
 
 var swiftSettings: [SwiftSetting] { [
-    .enableUpcomingFeature("ForwardTrailingClosures"),
     .enableUpcomingFeature("ExistentialAny"),
-    .enableUpcomingFeature("ConciseMagicFile"),
-    .enableUpcomingFeature("DisableOutwardActorInference"),
+    // .enableUpcomingFeature("InternalImportsByDefault"),
     .enableUpcomingFeature("MemberImportVisibility"),
-    .enableExperimentalFeature("StrictConcurrency=complete"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+    // .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("ImmutableWeakCaptures"),
 ] }
