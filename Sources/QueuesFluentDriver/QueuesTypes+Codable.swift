@@ -1,7 +1,7 @@
 import struct Queues.JobIdentifier
 import struct Queues.QueueName
 
-extension Queues.JobIdentifier: Swift.Codable {
+extension Queues.JobIdentifier: @retroactive Codable {
     public init(from decoder: any Decoder) throws {
         self.init(string: try decoder.singleValueContainer().decode(String.self))
     }
@@ -12,7 +12,7 @@ extension Queues.JobIdentifier: Swift.Codable {
     }
 }
 
-extension Queues.QueueName: Swift.Codable {
+extension Queues.QueueName: @retroactive Codable {
     public init(from decoder: any Decoder) throws {
         self.init(string: try decoder.singleValueContainer().decode(String.self))
     }

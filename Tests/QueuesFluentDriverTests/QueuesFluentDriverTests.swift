@@ -173,6 +173,25 @@ final class QueuesFluentDriverTests: XCTestCase {
         await XCTAssertEqualAsync(await failingJob.runCount, 6)
     } }
 
+    // https://github.com/vapor-community/vapor-queues-fluent-driver/issues/21
+    func testFailedJobRetryWhenPreserved() async throws  { try await self.withEachDatabase(preserveJobs: true) {
+        let jobID = JobIdentifier()
+        
+        let failingJob = FailingJob()
+        
+        self.app.queues.add(failingJob)
+        self.app.get("test") { req in
+            try await req.queue.dispatch(FailingJob.self, [:], maxRetryCount: 5, id: jobID)
+            return HTTPStatus.ok
+        }
+        try await self.app.testable().test(.GET, "test") { res async in
+            XCTAssertEqual(res.status, .ok)
+        }
+        
+        try? await self.app.queues.queue.worker.run().get()
+        await XCTAssertEqualAsync(await failingJob.runCount, 6)
+    } }
+
     func testDelayedJobIsRemovedFromProcessingQueue() async throws { try await self.withEachDatabase {
         let jobID = JobIdentifier()
 
@@ -418,6 +437,7 @@ final class QueuesFluentDriverTests: XCTestCase {
         XCTAssertEqual(QueueName(string: "a").string, try JSONDecoder().decode(QueueName.self, from: Data(#""a""#.utf8)).string)
         XCTAssertEqual(String(decoding: try JSONEncoder().encode(QueueName(string: "a")), as: UTF8.self), #""a""#)
     }
+    
 
     override class func setUp() {
         XCTAssert(isLoggingConfigured)
