@@ -14,6 +14,7 @@ import NIOSSL
 import Queues
 @testable import QueuesFluentDriver
 import SQLKit
+import SQLKitExtras
 import XCTest
 import XCTVapor
 
@@ -409,26 +410,7 @@ final class QueuesFluentDriverTests: XCTestCase {
             expr.serialize(to: &serializer)
             return serializer.sql
         }
-        XCTAssertEqual(serialized(.group(.identifier("a"))), "(\(serialized(.identifier("a"))))")
-        XCTAssertEqual(serialized(.column("a", table: "a")), "\(serialized(.identifier("a"))).\(serialized(.identifier("a")))")
-        XCTAssertEqual(serialized(.column("a", table: .identifier("a"))), "\(serialized(.identifier("a"))).\(serialized(.identifier("a")))")
-        XCTAssertEqual(serialized(.column(.identifier("a"), table: "a")), "\(serialized(.identifier("a"))).\(serialized(.identifier("a")))")
-        XCTAssertEqual(serialized(.column(.identifier("a"), table: .identifier("a"))), "\(serialized(.identifier("a"))).\(serialized(.identifier("a")))")
-        XCTAssertEqual(serialized(.literal(String?("a"))), "\(serialized(.literal("a")))")
-        XCTAssertEqual(serialized(.literal(String?.none)), "NULL")
-        XCTAssertEqual(serialized(.literal(1)), "1")
-        XCTAssertEqual(serialized(.literal(Int?(1))), "1")
-        XCTAssertEqual(serialized(.literal(Int?.none)), "NULL")
-        XCTAssertEqual(serialized(.literal(1.0)), "1.0")
-        XCTAssertEqual(serialized(.literal(Double?(1.0))), "1.0")
-        XCTAssertEqual(serialized(.literal(Double?.none)), "NULL")
-        XCTAssertEqual(serialized(.literal(true)), "\(serialized(SQLLiteral.boolean(true)))")
-        XCTAssertEqual(serialized(.literal(Bool?(true))), "\(serialized(SQLLiteral.boolean(true)))")
-        XCTAssertEqual(serialized(.literal(Bool?.none)), "NULL")
-        XCTAssertEqual(serialized(.null()), "NULL")
         XCTAssertEqual(serialized(SQLLockingClauseWithSkipLocked.shareSkippingLocked), serialized(SQLLockingClause.share) != "" ? "\(serialized(SQLLockingClause.share)) SKIP LOCKED" : "")
-
-        await XCTAssertNotNilAsync(try await (self.app.db(self.dbid) as! any SQLDatabase).transaction { $0.eventLoop.makeSucceededFuture(()) }.get())
     } }
 
     func testNamesCoding() throws {

@@ -1,4 +1,5 @@
 import SQLKit
+import SQLKitExtras
 import FluentKit
 
 /// A migration to create the job metadata table and any associated objects, such as enumeration types and indexes.

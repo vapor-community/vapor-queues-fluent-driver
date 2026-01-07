@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "QueuesFluentDriver",
+    name: "queues-fluent-driver",
     platforms: [
         .macOS(.v10_15),
         .iOS(.v13),
@@ -19,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/sql-kit.git", from: "3.34.0"),
         .package(url: "https://github.com/vapor/queues.git", from: "1.17.2"),
         .package(url: "https://github.com/vapor/console-kit.git", from: "4.15.2"),
+        .package(url: "https://github.com/vapor-community/sql-kit-extras.git", from: "0.0.9"),
     ] + (Context.environment["CI"] != nil ? [
         .package(url: "https://github.com/vapor/fluent-sqlite-driver.git", from: "4.8.1"),
         .package(url: "https://github.com/vapor/fluent-postgres-driver.git", from: "2.12.0"),
@@ -33,6 +34,7 @@ let package = Package(
                 .product(name: "FluentKit", package: "fluent-kit"),
                 .product(name: "FluentSQL", package: "fluent-kit"),
                 .product(name: "SQLKit", package: "sql-kit"),
+                .product(name: "SQLKitExtras", package: "sql-kit-extras"),
                 .product(name: "Queues", package: "queues")
             ],
             swiftSettings: swiftSettings

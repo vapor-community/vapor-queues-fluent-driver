@@ -1,6 +1,7 @@
 import FluentKit
 import Logging
 import SQLKit
+import SQLKitExtras
 
 /// A migration to upgrade the data from the old 1.x and 2.x versions of this driver to the current version.
 ///
