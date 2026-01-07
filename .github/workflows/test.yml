@@ -106,6 +106,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+      - name: Install utilities
+        run: apt update && apt install -y curl jq
       - name: Install SDK
         run: |
           tag="$(swiftc --version | grep -Po '(?<=\().+(?=\))')"
