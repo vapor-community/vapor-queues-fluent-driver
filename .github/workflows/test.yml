@@ -5,7 +5,8 @@ concurrency:
 on:
   pull_request: { types: [opened, reopened, synchronize, ready_for_review] }
   push: { branches: [ main ] }
-permissions: read
+permissions:
+  contents: read
 
 jobs:
   api-breakage:
